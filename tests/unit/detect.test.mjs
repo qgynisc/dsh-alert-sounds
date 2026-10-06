@@ -81,14 +81,20 @@ test('完成提醒：running 真 → 假 后响一次 done', async () => {
   assert.equal(overlayProps().getCurrent(), 'done')
 })
 
-test('已知限制（沿用上游）：页面加载时就已经在运行的会话，完成后不提醒', async () => {
-  // seed() 只建基线、不 armRun；settleRun 找不到本轮记录就直接 return。
-  // 影响面：只有「页面刷新/重开时正好有会话在跑」这一种情况；正常一轮跑完仍会响。
-  // 以后要修的话，就在 seed() 里补一次 armRun，并把这条测试反过来断言 'done'。
-  const { list, overlayProps } = setup({ list: { byId: { s1: { running: true } }, current: 's1' } })
+test('页面加载时已在运行的会话，完成后也必须提醒（2026-10-06 修复的关键 bug）', async () => {
+  // 旧行为：seed() 只建基线、不 armRun → settleRun 在 runs 里找不到本轮记录 → 直接 return。
+  // 症状：用户为了看改动每轮都刷新页面，于是「刷新时正好有一轮在跑」的那一轮永远不提醒。
+  // 现行为：seed() 对正在跑的会话也 armRun，加载后的第一轮结束照样响。
+  const { list, overlayProps, registered } = setup({ list: { byId: { s1: { running: true } }, current: 's1' } })
+  const diagOf = () => registered['settings.section'][0].component({}).props.getDiag()
+
+  assert.equal(diagOf().sessionsReady, true, '会话服务就绪要反映到诊断里')
+  assert.equal(diagOf().running, 1, '诊断要看到 1 个运行中的会话')
+
   list.set({ byId: { s1: { running: false } }, current: 's1' })
   await delay(400)
-  assert.equal(overlayProps().getCurrent(), null)
+  assert.equal(overlayProps().getCurrent(), 'done', '加载时已在跑的会话，完成后也要提醒')
+  assert.equal(diagOf().lastKind, 'done', '诊断要记下上次提醒的类别')
 })
 
 test('失败提醒：本轮 lastAgentError 变化 → failed', async () => {

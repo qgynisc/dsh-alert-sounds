@@ -234,8 +234,54 @@ function SettingsPanel(props) {
     react.createElement("div", { style: rowStyle },
       react.createElement("button", { style: btnStyle, onClick: () => { if (typeof window === "undefined" || typeof window.confirm !== "function" || window.confirm(t("reset.confirm"))) commit(deepMerge(DEFAULTS, {})); } }, t("reset")),
       react.createElement("span", { style: mutedStyle }, t("reset.hint"))),
+
+    /* ===================== 诊断（为什么没提醒？） ===================== */
+    section("sec.diag"),
+    react.createElement(DiagBlock, {
+      // 兜底：单测/异常环境下即使没拿到诊断接口也不能让整页崩掉
+      getDiag: props.getDiag || (() => ({ sessionsReady: false, seen: 0, running: 0, observes: 0, lastKind: null, lastAt: 0, lastBlocked: null })),
+      testAlert: props.testAlert || (() => {}),
+    }),
     react.createElement("div", { style: hintStyle }, t("hint"))
   );
+}
+
+/* ===================== 诊断块：回答「为什么没提醒」 =====================
+ * 2026-10-06：用户反馈「每次完成怎么没有提醒」，而设置里所有闸门都是开的。
+ * 与其继续猜，不如把插件**实际看到的东西**摆出来：
+ *   - 会话检测是否就绪、看到几个会话、几个在跑、被观察了多少次；
+ *   - 上次提醒是什么类别、什么时候、有没有被勿扰挡下；
+ *   - 当前闸门快照：悬浮提示 / 音量 / 勿扰 / 范围 / 完成音色；
+ *   - 一个「测试一次完整提醒」按钮：走真实 alert() 路径（受上面这些闸门影响），
+ *     点了没声音、没横幅，就直接说明是哪道闸门挡的。
+ * 每 1 秒轮询一次（面板关闭即停），不影响任何提醒逻辑。 */
+function DiagBlock(props) {
+  const pair = react.useState(props.getDiag());
+  const d = pair[0], setD = pair[1];
+  react.useEffect(() => {
+    if (typeof window === "undefined" || typeof window.setInterval !== "function") return undefined;
+    const id = window.setInterval(() => setD(props.getDiag()), 1000);
+    return () => { try { window.clearInterval(id); } catch (e) {} };
+  }, []);
+  const line = (label, value) => react.createElement("div", { style: hintStyle },
+    react.createElement("span", { style: { opacity: 0.75 } }, label + t("sep")),
+    react.createElement("span", null, value));
+  const onOff = (flag) => (flag ? t("diag.on") : t("diag.off"));
+  const doneSound = (settings.types && settings.types.done && settings.types.done.sound) || "ding";
+  const lastValue = d.lastKind
+    ? t(d.lastKind) + " " + formatClock(d.lastAt) + (d.lastBlocked === "dnd" ? "（" + t("diag.blockedDnd") + "）" : "")
+    : t("diag.never");
+  return react.createElement("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
+    line(t("diag.detect"), (d.sessionsReady ? t("diag.ok") : t("diag.no"))
+      + " · " + t("diag.sessions") + " " + d.seen + "（" + t("diag.running") + " " + d.running + "）"
+      + " · " + t("diag.observes") + " " + d.observes),
+    line(t("diag.last"), lastValue),
+    line(t("diag.gates"), onOff(settings.showToast) + " · " + Math.round(settings.volume * 100) + "% · "
+      + t("dnd") + " " + onOff(settings.dndEnabled) + " · " + (settings.scope === "current" ? t("scope.current") : t("scope.all"))
+      + " · " + t("sound." + doneSound)),
+    react.createElement("div", { style: rowStyle },
+      react.createElement("button", { style: btnStyle, onClick: () => props.testAlert("done") }, t("diag.test")),
+      react.createElement("span", { style: mutedStyle }, t("diag.test.hint"))));
 }
 
 /* ===================== 浮条 1：原方案（上游彩条，3.6 秒自关） ===================== */

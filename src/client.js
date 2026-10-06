@@ -165,7 +165,10 @@ const I18N = {
     "dnd": "勿扰时段", "dnd.on": "开启", "dnd.to": "至",
     "preview": "预览", "preview.title": "各类提醒长什么样（1× 示意）", "preview.hint": "这些是 1× 示意，用来看配色与文字排版；真实大小请点上面的「弹一条看看」或每类右边的「预览」——那会按当前大小弹一条真身。",
     "preview.real": "真实效果", "preview.real.button1": "弹一条", "preview.real.button2": "看大小", "preview.real.hint": "按当前「提示样式 / 提示大小」弹一条真的；点它或 15 秒后消失",
-    "sec.base": "基础", "sec.sound": "提醒声音", "sec.screen": "屏幕提示", "sec.reset": "其它",
+    "sec.base": "基础", "sec.sound": "提醒声音", "sec.screen": "屏幕提示", "sec.reset": "其它", "sec.diag": "诊断",
+    "diag.detect": "检测", "diag.ok": "正常", "diag.no": "未就绪", "diag.sessions": "会话", "diag.running": "运行中", "diag.observes": "已观察",
+    "diag.last": "上次提醒", "diag.never": "还没有", "diag.blockedDnd": "被勿扰挡下", "diag.gates": "闸门", "diag.on": "开", "diag.off": "关",
+    "diag.test": "测试一次完整提醒", "diag.test.hint": "走真实流程（受上面这些闸门影响）：点了没声音、没横幅，就说明是哪道闸门挡的",
     "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
     /* 设置页顶部「标题 + 归属 + 项目地址」区块（qgynisc 所有插件统一形态） */
@@ -188,7 +191,10 @@ const I18N = {
     "dnd": "Do-not-disturb", "dnd.on": "On", "dnd.to": "to",
     "preview": "Preview", "preview.title": "What each alert looks like (1× sketch)", "preview.hint": "These are 1× sketches (colours and layout). For the real size use “Pop one” above, or “Preview” next to a kind — those pop the real banner at your current size.",
     "preview.real": "Real preview", "preview.real.button1": "Pop one", "preview.real.button2": "to check size", "preview.real.hint": "pops the real banner at your current style/size; click it or it goes after 15s",
-    "sec.base": "Basics", "sec.sound": "Alert sounds", "sec.screen": "Screen banner", "sec.reset": "Other",
+    "sec.base": "Basics", "sec.sound": "Alert sounds", "sec.screen": "Screen banner", "sec.reset": "Other", "sec.diag": "Diagnostics",
+    "diag.detect": "Watch", "diag.ok": "ok", "diag.no": "not ready", "diag.sessions": "sessions", "diag.running": "running", "diag.observes": "ticks",
+    "diag.last": "Last alert", "diag.never": "none yet", "diag.blockedDnd": "blocked by DND", "diag.gates": "Gates", "diag.on": "on", "diag.off": "off",
+    "diag.test": "Fire a real alert", "diag.test.hint": "runs the real path (all gates above apply); silence means a gate blocked it",
     "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",
     "page.byline": "Implemented by the plugin", "page.bylineTail": "", "page.repo": "Repository", "page.version": "Version", "page.fork": "Forked from", "page.forkTail": " (MIT)",
@@ -588,12 +594,19 @@ function apply(ctx) {
     timeout: (fn, ms) => ctx.timeout(fn, ms),
   });
 
+  // 诊断用的小状态：设置页底部的「诊断」块直接读它，用来回答「为什么没提醒」。
+  // 它只记录事实（看到几个会话、几次观察、上次提醒是什么/被谁挡下），不改任何行为。
+  const diag = { sessionsReady: false, seen: 0, running: 0, observes: 0, lastKind: null, lastAt: 0, lastBlocked: null };
+
   // 一次提醒 = 声音/语音 + 系统通知 + 悬浮提示（勿扰时段则全部静音）
   function alert(kind, detail) {
-    if (inDnd()) return;
+    if (inDnd()) { diag.lastBlocked = "dnd"; return; }
+    diag.lastBlocked = null;
     try { playType(kind, detail); } catch (e) {}
     try { notify(kind, detail); } catch (e) {}
     toast.emit(kind);
+    diag.lastKind = kind;
+    diag.lastAt = Date.now();
   }
 
   // ---- 检测：会话列表的边沿 ----
@@ -628,9 +641,18 @@ function apply(ctx) {
   }
   function seed(list) {
     const byId = (list && list.byId) || {};
+    diag.sessionsReady = true;
+    diag.seen = Object.keys(byId).length;
+    diag.running = Object.keys(byId).filter((id) => !!(byId[id] || {}).running).length;
     for (const id of Object.keys(byId)) {
       const s = byId[id] || {};
-      prev.set(id, { running: !!s.running, pending: pendingKindOf(id) });
+      const running = !!s.running;
+      prev.set(id, { running, pending: pendingKindOf(id) });
+      // **关键修复（2026-10-06）**：加载时**已经在跑**的会话也要 armRun。
+      // 否则「刷新页面时正好有一轮在跑」的那一轮结束时，settleRun 在 runs 里找不到本轮
+      // 记录，会直接 return —— 等于那一轮永远不提醒。用户为了看改动每轮都在刷新，
+      // 正好全部被这条吃掉（症状就是「每次完成都没提醒」）。
+      if (running) armRun(id);
     }
   }
   // 只刷新“挂起”基线，绝不碰 running —— 否则在某一轮运行途中执行会把
@@ -779,6 +801,10 @@ function apply(ctx) {
     const byId = (list && list.byId) || {};
     const current = list && list.current;
     const scope = (settings.scope) || "all";
+    // 诊断：这一轮看到了多少会话、多少在跑（设置页底部的「诊断」块读它）
+    diag.observes += 1;
+    diag.seen = Object.keys(byId).length;
+    diag.running = Object.keys(byId).filter((id) => !!(byId[id] || {}).running).length;
     for (const id of Object.keys(byId)) {
       if (scope === "current" && id !== current) continue;
       const s = byId[id] || {};
@@ -901,6 +927,9 @@ function apply(ctx) {
         // 设置页「预览」：按当前大小真弹一条**真身**（同时试听声音）。preview 标记让它不受
         // 「悬浮提示」总开关影响，也不会被你一动鼠标就收掉（见 createToastStore）。
         previewToast: (kind) => toast.emit(kind, { preview: true }),
+        // 诊断块：把「插件到底看到了什么」摆出来，并把「测试一次完整提醒」接到真实 alert() 路径
+        getDiag: () => diag,
+        testAlert: (kind) => alert(kind, ""),
         requestNotify: requestNotifyPermission,
         uploadCustom: uploadCustomAudio,
       }))

@@ -132,7 +132,7 @@ test('设置页按组分块：组标题上方有分隔线，提示相关设置�
     const style = child && child.props && child.props.style
     if (style && style.borderTop) sections.push({ index, text: texts(child).join('') })
   })
-  assert.deepEqual(sections.map((item) => item.text), ['基础', '提醒声音', '屏幕提示', '其它'])
+  assert.deepEqual(sections.map((item) => item.text), ['基础', '提醒声音', '屏幕提示', '其它', '诊断'])
   assert.ok(sections[0].index > 0, '第一个元素必须还是归属区块（见全局约定）')
 
   const at = (title) => sections.find((item) => item.text === title).index
