@@ -30,6 +30,13 @@ const btnStyle = { padding: "3px 10px", borderRadius: "6px", fontSize: 12, curso
 const hintStyle = { fontSize: 12, opacity: 0.6 };
 const mutedStyle = { fontSize: 12, opacity: 0.7 };
 
+/* 设置页里「各类提醒长什么样」区块的排版 */
+const previewTitleStyle = { fontSize: 12, fontWeight: 600, opacity: 0.75, marginTop: "4px" };
+const previewListStyle = { display: "flex", flexDirection: "column", gap: "8px" };
+const previewRowStyle = { display: "flex", alignItems: "center", gap: "10px" };
+const previewLabelStyle = { width: "76px", flex: "0 0 auto", fontSize: 12, opacity: 0.75 };
+const previewCellStyle = { flex: "1 1 auto", minWidth: 0 };
+
 /* 设置页顶部「标题 + 归属 + 项目地址」区块。
  * 形态与配色对齐 @qgynisc/dsh-inline-pastes 的设置页（qgynisc 所有插件统一成这样）：
  *   标题 15px/600 → 次行 12px/18px 三次色 → 分隔线。
@@ -83,7 +90,8 @@ function SettingsPanel(props) {
           react.createElement("input", { type: "checkbox", checked: !!ts.enabled, onChange: () => commit(Object.assign({}, s, { types: Object.assign({}, s.types, { [kind]: Object.assign({}, ts, { enabled: !ts.enabled }) }) })) }),
           react.createElement("span", null, t(kind))),
         react.createElement("select", { value: ts.sound, onChange: e => commit(Object.assign({}, s, { types: Object.assign({}, s.types, { [kind]: Object.assign({}, ts, { sound: e.target.value }) }) })), style: selStyle }, opts),
-        react.createElement("button", { style: btnStyle, onClick: () => props.play(kind) }, t("preview")),
+        /* 一键预览：既按当前「提示大小」弹这条真身，也播它的声音 */
+        react.createElement("button", { style: btnStyle, onClick: () => { props.play(kind); props.previewToast(kind); } }, t("preview")),
         upload
       ),
       kind === "failed" ? react.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: "-4px" } }, t("failed.hint")) : null
@@ -180,6 +188,16 @@ function SettingsPanel(props) {
       react.createElement("button", { style: btnStyle, onClick: () => { if (typeof window === "undefined" || typeof window.confirm !== "function" || window.confirm(t("reset.confirm"))) commit(deepMerge(DEFAULTS, {})); } }, t("reset")),
       react.createElement("span", { style: mutedStyle }, t("reset.hint"))),
     rows,
+    /* ---- 各类提醒长什么样：静态预览 ----
+     * 与真身**共用同一个 OwnToast**（inline 模式、固定按 1 倍渲染），所以预览不会跟实际
+     * 效果漂移；想看当前「提示大小」下的真身，点上面每类右边的「预览」按钮弹一条真的。 */
+    react.createElement("div", { style: previewTitleStyle }, t("preview.title")),
+    react.createElement("div", { style: previewListStyle },
+      KINDS.map(kind => react.createElement("div", { key: kind, style: previewRowStyle },
+        react.createElement("span", { style: previewLabelStyle }, t(kind)),
+        react.createElement("div", { style: previewCellStyle },
+          react.createElement(OwnToast, { kind: kind, at: Date.now(), inline: true }))))),
+    react.createElement("div", { style: hintStyle }, t("preview.hint")),
     react.createElement("div", { style: hintStyle }, t("hint"))
   );
 }
@@ -204,17 +222,18 @@ function OriginalToast(props) {
 
 /* ===================== 浮条 2：自研常驻条 =====================
  *
- * 需求（2026-10-06，用户原话）：「提示条，不要用黑色，不明显，也用原来的绿色，
- * 大小先放大 5 倍……这东西要的就是一走一过，明显能看到才行」。所以：
- *   1. 背景用**该类别的原色**（完成 = 原来的绿色 #16a34a，出错 = 红，审批 = 琥珀，提问 = 紫），
- *      不再用深色黑卡片——黑卡片在浅色/深色界面里都不抢眼，瞥一眼注意不到；
- *   2. 尺寸整体放大：**只改 OWN_TOAST_SCALE 一个数**（字号、内边距、圆点、关闭按钮、
- *      离底距离全按它缩放），方便按实际观感再微调。
- * scale=1 时的像素值集中在 OWN_TOAST_BASE，想单独调某一项也方便。 */
+ * 需求（2026-10-06，用户原话）：
+ *   1.「不要用黑色，不明显，也用原来的绿色」→ 背景用**该类别的原色**（完成 = 原来的绿色
+ *      #16a34a，出错 = 红，审批 = 琥珀，提问 = 紫，卡住 = 橙），不再用深色黑卡片；
+ *   2.「大小先放大 5 倍……这东西要的就是一走一过，明显能看到才行」→ 尺寸由
+ *      OWN_TOAST_SCALE 统一缩放（设置里「提示大小」可调），基数在 OWN_TOAST_BASE；
+ *   3.「提示只保留文字，左面的点，右面的 X 都不用」→ 只有文字，没有圆点、没有关闭按钮；
+ *      收起方式就是鼠标明显移动或点击一下（见 createToastStore）。
+ * 文字居中两行：类别 /「时刻 · 怎么收起」。 */
 const OWN_TOAST_SCALE = 5; // = DEFAULTS.toastScale，也是设置缺失时的兜底
 const OWN_TOAST_BASE = {
-  paddingX: 16, paddingY: 12, gap: 10,
-  dot: 10, title: 14, sub: 11, close: 22, closeFont: 15,
+  paddingX: 16, paddingY: 12,
+  title: 14, sub: 11,
   bottom: 28, radius: 12, marginX: 16,
 };
 /** 设置里「提示大小」可选的倍数。 */
@@ -226,66 +245,51 @@ function toastScaleOf(cfg) {
   return Math.min(10, Math.max(1, value));
 }
 
+/**
+ * 自研浮条。
+ * props.inline === true 时渲染成「设置页里的静态预览」：去掉 fixed/居中变换、按 1 倍显示、
+ * 撑满可用宽度——与真身**共用同一套样式**，所以预览不会跟实际效果漂移。
+ */
 function OwnToast(props) {
   const accent = (TOAST_MAP[props.kind] || TOAST_MAP.connected).bg;
-  const k = toastScaleOf(settings);
+  const inline = props.inline === true;
+  const k = inline ? 1 : toastScaleOf(settings);
   const b = OWN_TOAST_BASE;
   const px = (value) => Math.round(value * k) + "px";
   const card = {
-    position: "fixed",
-    left: "50%",
-    bottom: px(b.bottom),
-    transform: "translateX(-50%)",
-    zIndex: 2147483000,
-    fontFamily: "system-ui, sans-serif",
-    display: "flex",
-    alignItems: "center",
-    gap: px(b.gap),
     boxSizing: "border-box",
-    // 放大后要防止在窄窗口里溢出屏幕：限宽 + 允许换行
-    maxWidth: "calc(100vw - " + (b.marginX * 2) + "px)",
+    display: "flex",
+    flexDirection: "column",
+    gap: px(2),
+    textAlign: "center",
     padding: px(b.paddingY) + " " + px(b.paddingX),
     borderRadius: px(b.radius),
     color: "#fff",
     background: accent,
-    boxShadow: "0 " + px(4) + " " + px(14) + " rgba(0,0,0,.35)",
+    fontFamily: "system-ui, sans-serif",
+    wordBreak: "break-word",
     pointerEvents: "none",
   };
-  const dot = {
-    width: px(b.dot),
-    height: px(b.dot),
-    borderRadius: "50%",
-    background: "rgba(255,255,255,0.9)",
-    flex: "0 0 auto",
-  };
-  const textCol = { display: "flex", flexDirection: "column", gap: px(2), minWidth: 0 };
-  const title = { fontWeight: 600, fontSize: px(b.title), lineHeight: 1.2, wordBreak: "break-word" };
-  const sub = { fontSize: px(b.sub), lineHeight: 1.2, opacity: 0.85, wordBreak: "break-word" };
-  const closeBtn = {
-    marginLeft: px(4),
-    width: px(b.close),
-    height: px(b.close),
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    lineHeight: 1,
-    fontSize: px(b.closeFont),
-    borderRadius: px(6),
-    cursor: "pointer",
-    color: "#fff",
-    background: "rgba(255,255,255,0.16)",
-    border: "1px solid rgba(255,255,255,0.5)",
-    pointerEvents: "auto",
-    flex: "0 0 auto",
-  };
+  if (inline) {
+    card.position = "static";
+    card.width = "100%";
+    card.boxShadow = "none";
+    card.opacity = 0.95;
+  } else {
+    card.position = "fixed";
+    card.left = "50%";
+    card.bottom = px(b.bottom);
+    card.transform = "translateX(-50%)";
+    card.zIndex = 2147483000;
+    // 放大后要防止在窄窗口里溢出屏幕：限宽
+    card.maxWidth = "calc(100vw - " + (b.marginX * 2) + "px)";
+    card.boxShadow = "0 " + px(4) + " " + px(14) + " rgba(0,0,0,.35)";
+  }
+  const title = { fontWeight: 600, fontSize: px(b.title), lineHeight: 1.2 };
+  const sub = { fontSize: px(b.sub), lineHeight: 1.2, opacity: 0.85 };
   return react.createElement("div", { style: card, role: "status", "aria-live": "polite" },
-    react.createElement("span", { style: dot }),
-    react.createElement("div", { style: textCol },
-      react.createElement("span", { style: title }, t(props.kind)),
-      react.createElement("span", { style: sub }, formatClock(props.at) + " · " + t("own.hint"))),
-    react.createElement("button", { style: closeBtn, onClick: props.onClose, title: t("toast.close"), "aria-label": t("toast.close") }, "×")
-  );
+    react.createElement("span", { style: title }, t(props.kind)),
+    react.createElement("span", { style: sub }, formatClock(props.at) + " · " + t("own.hint")));
 }
 
 /* ===================== 浮条分发：按设置挑一种实现 ===================== */
@@ -298,7 +302,7 @@ function AlertToast(props) {
   if (!msg) return null;
   if (!settings.showToast) return null;
   if (settings.toastStyle === "original") return react.createElement(OriginalToast, { kind: msg });
-  return react.createElement(OwnToast, { kind: msg, at: at, onClose: props.close });
+  return react.createElement(OwnToast, { kind: msg, at: at });
 }
 
 /* 供单测读取浮条尺寸旋钮（panel.js 的 const 在 __test 之后才求值，所以这里补挂）。 */

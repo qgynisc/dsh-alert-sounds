@@ -174,3 +174,10 @@ test('默认（自研常驻条）下同一条完成提示不会自己消失', as
   await delay(4200) // 超过原方案的 3.6 秒
   assert.equal(overlayProps().getCurrent(), 'done', '人没回来之前不该消失')
 })
+
+test('启动不再弹蓝色「提醒已连接」条（用户会误以为是提醒出错）', async () => {
+  // 上游会在 apply 后 600ms 弹一条 connected（唯一用蓝色的那条）；本 fork 已去掉。
+  const { overlayProps } = setup()
+  await delay(900)
+  assert.equal(overlayProps().getCurrent(), null)
+})

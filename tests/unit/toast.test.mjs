@@ -130,7 +130,7 @@ test('自研：任意点击也收（触屏 / 不想动鼠标的情况）', () =>
   assert.equal(env.count('pointermove'), 0)
 })
 
-test('自研：× 按钮（手动 close）随时能收', () => {
+test('自研：程序里也能直接 close（给以后的其它收起入口留路）', () => {
   const { store } = makeStore('untilMove')
   store.emit('question')
   store.close()
@@ -153,13 +153,14 @@ test('自研：收掉之后再响一条，会重新挂上监听（不是一次�
 
 /* ---------------- 通用语义 ---------------- */
 
-test('sticky：谁都不自动关，只能手动 close', () => {
+test('不再有「关不掉」的模式：未知模式一律按自动消失处理', () => {
+  // 自研浮条已按要求去掉 × 按钮（只留文字），所以「只能手动关」那种模式必须不存在，
+  // 否则会留下一条关不掉的条幅。未列入的（如旧的 "sticky"）一律回落到 short。
   const { env, timers, store } = makeStore('sticky')
   store.emit('approval')
-  assert.equal(timers.size(), 0, 'sticky 不该排任何定时器')
-  assert.equal(env.count('pointermove'), 0)
+  assert.equal(env.count('pointermove'), 0, '不该挂输入监听')
   assert.equal(store.getCurrent(), 'approval')
-  store.close('approval')
+  assert.equal(timers.run(TOAST_SHORT_MS), 1, '应当排了自动消失定时器')
   assert.equal(store.getCurrent(), null)
 })
 

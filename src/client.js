@@ -158,7 +158,7 @@ const I18N = {
     "toast.close": "关闭提示", "own.hint": "鼠标移动或点击收起",
     "rate": "语音语速", "rate.slow": "慢", "rate.normal": "标准", "rate.fast": "快",
     "dnd": "勿扰时段", "dnd.on": "开启", "dnd.to": "至",
-    "preview": "试听", "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
+    "preview": "预览", "preview.title": "各类提醒长什么样", "preview.hint": "上面是各类提醒的静态预览；点每类右边的「预览」会按当前「提示大小」真弹一条（同时试听声音）。", "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
     /* 设置页顶部「标题 + 归属 + 项目地址」区块（qgynisc 所有插件统一形态） */
     "page.byline": "本项目由插件", "page.bylineTail": "实现", "page.repo": "项目地址", "page.version": "版本", "page.fork": "fork 自", "page.forkTail": "（MIT）",
@@ -178,7 +178,7 @@ const I18N = {
     "toast.close": "Dismiss", "own.hint": "move the pointer or click to dismiss",
     "rate": "Voice rate", "rate.slow": "Slow", "rate.normal": "Normal", "rate.fast": "Fast",
     "dnd": "Do-not-disturb", "dnd.on": "On", "dnd.to": "to",
-    "preview": "Preview", "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
+    "preview": "Preview", "preview.title": "What each alert looks like", "preview.hint": "The rows above are static previews; “Preview” next to a kind pops the real banner at the current size (and plays its sound).", "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",
     "page.byline": "Implemented by the plugin", "page.bylineTail": "", "page.repo": "Repository", "page.version": "Version", "page.fork": "Forked from", "page.forkTail": " (MIT)",
   },
@@ -412,10 +412,11 @@ function notify(kind, detail) {
  * 3. 浮条存储（悬浮提示）
  *
  * 与 React 解耦：src/panel.js 里的 AlertToast 只是它的订阅者。
- * 内部有三种停留策略，由设置 toastStyle 映射（见 toastModeFor）：
+ * 两种停留策略，由设置 toastStyle 映射（见 toastModeFor）：
  *   - "short"     3.6 秒自动消失 —— 「原方案」（上游行为）；
- *   - "untilMove" 常驻，直到鼠标**明显移动**（≥8px）或任意点击 —— 「自研」默认；
- *   - "sticky"    常驻，只能点 × 关（当前设置页没有暴露，留着给以后用）。
+ *   - "untilMove" 常驻，直到鼠标**明显移动**（≥8px）或任意点击 —— 「自研」默认。
+ * **不提供「只能手动关」的模式**：自研浮条已按要求去掉 × 按钮（只留文字），
+ * 那种模式会变成关不掉的条幅；所以未知/非法模式一律回落到 short（自己会消失）。
  *
  * 为什么需要「武装延迟」：提示条弹出的瞬间，指针往往还停在原处或有微小抖动，
  * 立刻开始监听会把刚弹出的条一并关掉（等于这个功能没做）。所以先等 ARM_DELAY_MS
@@ -424,7 +425,6 @@ function notify(kind, detail) {
 const TOAST_SHORT_MS = 3600;
 const TOAST_ARM_DELAY_MS = 500;
 const TOAST_MOVE_PX = 8;
-const TOAST_MODES = ["short", "untilMove", "sticky"];
 
 /**
  * 纯函数：该用哪种停留策略。
@@ -444,7 +444,7 @@ function movedEnough(dx, dy) {
 /**
  * 建一个浮条存储。
  * @param options.env      提供 addEventListener/removeEventListener 的对象（缺省 window）
- * @param options.getMode  (kind) => 'short' | 'untilMove' | 'sticky'
+ * @param options.getMode  (kind) => 'short' | 'untilMove'（非法值按 short 处理）
  * @param options.timeout  (fn, ms) => 取消函数（生产传 ctx.timeout，单测传假定时器）
  */
 function createToastStore(options) {
@@ -525,8 +525,8 @@ function createToastStore(options) {
     notify();
     if (!kind) return;
     const mode = getMode(kind);
-    if (mode === "sticky") return; // 常驻，等 ×
     if (mode === "untilMove") { armInputDismissal(kind); return; }
+    // 其余（"short" 以及任何非法值）都走自动消失，绝不留关不掉的条幅
     timer = timeout(() => { timer = null; close(kind); }, TOAST_SHORT_MS);
   }
 
@@ -853,6 +853,8 @@ function apply(ctx) {
         setSettings: persistSettings,
         subscribeSettings,
         play: playType,
+        // 设置页每类的「预览」按钮：既试听声音，也按当前大小真弹一条（见 panel.js）
+        previewToast: (kind) => toast.emit(kind),
         requestNotify: requestNotifyPermission,
         uploadCustom: uploadCustomAudio,
       }))
@@ -863,12 +865,14 @@ function apply(ctx) {
         subscribe: toast.subscribe,
         getCurrent: toast.getCurrent,
         getCurrentAt: toast.getCurrentAt,
-        close: toast.close,
       })
     )));
   });
 
-  ctx.timeout(() => toast.emit("connected"), 600);
+  // 启动时**不再**弹「🔔 提醒已连接」蓝条（2026-10-06 用户实际反馈）：
+  // 悬浮提示默认是开的，于是每次刷新页面都会闪一条蓝条，放大后更显眼，
+  // 用户会误以为「提醒出错了」——它就是唯一用蓝色的那条。声音解锁照旧由上面
+  // 那对 pointerdown/keydown 监听完成，不需要视觉提示。
 }
 
 exports.apply = apply;
