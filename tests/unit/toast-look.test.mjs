@@ -154,11 +154,25 @@ test('自研浮条：大小在设置里可调（默认 5 倍，1–10 倍夹紧�
   assert.equal(two.rendered.props.style.background, '#16a34a', '调大小不该影响底色')
 })
 
-test('自研浮条：放大后限宽并允许换行，窄窗口不会溢出屏幕', () => {
-  const { rendered } = renderToast('done')
+test('自研浮条：两行永不断行，且底色与文字同比放大（不再限宽导致折行）', () => {
+  const { rendered, mod } = renderToast('done', { settings: { lang: 'zh', toastScale: 8 } })
   const style = rendered.props.style
-  assert.match(String(style.maxWidth), /100vw/)
-  assert.equal(style.wordBreak, 'break-word')
+  const [titleNode, subNode] = rendered.props.children
+
+  // 1) 两行永不断行：用户截图里 5× 时第二行折成两行、整条变三行
+  assert.equal(style.whiteSpace, 'nowrap')
+  assert.equal(titleNode.props.style.whiteSpace, 'nowrap')
+  assert.equal(subNode.props.style.whiteSpace, 'nowrap')
+
+  // 2) 不能再限宽：限宽正是折行的原因
+  assert.equal(style.maxWidth, undefined, '不设宽度上限，卡片跟着内容一起变宽')
+
+  // 3) 底色与文字同比：内边距/圆角/字号同一个倍数
+  const base = mod.__test.OWN_TOAST_BASE
+  assert.equal(style.padding, px(base.paddingY * 8) + ' ' + px(base.paddingX * 8))
+  assert.equal(style.borderRadius, px(base.radius * 8))
+  assert.equal(titleNode.props.style.fontSize, px(base.title * 8))
+  assert.equal(subNode.props.style.fontSize, px(base.sub * 8))
   assert.equal(style.boxSizing, 'border-box')
 })
 

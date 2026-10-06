@@ -270,7 +270,7 @@ const OWN_TOAST_SCALE = 5; // = DEFAULTS.toastScale，也是设置缺失时的�
 const OWN_TOAST_BASE = {
   paddingX: 16, paddingY: 12,
   title: 14, sub: 11,
-  bottom: 28, radius: 12, marginX: 16,
+  bottom: 28, radius: 12,
 };
 /** 设置里「提示大小」可选的倍数。 */
 const TOAST_SCALES = [1, 2, 3, 4, 5, 6, 8];
@@ -292,6 +292,12 @@ function OwnToast(props) {
   const k = inline ? 1 : toastScaleOf(settings);
   const b = OWN_TOAST_BASE;
   const px = (value) => Math.round(value * k) + "px";
+  /* 两条硬约定（2026-10-06 用户截图：5× 时第二行折成两行、整条变三行）：
+   *   1. **两行永不断行** —— `whiteSpace: nowrap`；
+   *   2. **底色与文字同比** —— 内边距、圆角、字号全用同一个 k，并且**不设宽度上限**，
+   *      卡片跟着内容一起变宽；之前限了 `maxWidth: 100vw-32px`，字号上去、宽度被卡住，
+   *      于是折行。 */
+  const noWrap = inline ? "normal" : "nowrap";
   const card = {
     boxSizing: "border-box",
     display: "flex",
@@ -303,7 +309,7 @@ function OwnToast(props) {
     color: "#fff",
     background: accent,
     fontFamily: "system-ui, sans-serif",
-    wordBreak: "break-word",
+    whiteSpace: noWrap,
     pointerEvents: "none",
   };
   if (inline) {
@@ -317,12 +323,10 @@ function OwnToast(props) {
     card.bottom = px(b.bottom);
     card.transform = "translateX(-50%)";
     card.zIndex = 2147483647;
-    // 放大后要防止在窄窗口里溢出屏幕：限宽
-    card.maxWidth = "calc(100vw - " + (b.marginX * 2) + "px)";
     card.boxShadow = "0 " + px(4) + " " + px(14) + " rgba(0,0,0,.35)";
   }
-  const title = { fontWeight: 600, fontSize: px(b.title), lineHeight: 1.2 };
-  const sub = { fontSize: px(b.sub), lineHeight: 1.2, opacity: 0.85 };
+  const title = { display: "block", fontWeight: 600, fontSize: px(b.title), lineHeight: 1.2, whiteSpace: noWrap };
+  const sub = { display: "block", fontSize: px(b.sub), lineHeight: 1.2, opacity: 0.85, whiteSpace: noWrap };
   return react.createElement("div", { style: card, role: "status", "aria-live": "polite" },
     react.createElement("span", { style: title }, t(props.kind)),
     react.createElement("span", { style: sub }, formatClock(props.at) + " · " + t("own.hint")));
