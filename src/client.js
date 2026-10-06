@@ -158,7 +158,10 @@ const I18N = {
     "toast.close": "关闭提示", "own.hint": "鼠标移动或点击收起",
     "rate": "语音语速", "rate.slow": "慢", "rate.normal": "标准", "rate.fast": "快",
     "dnd": "勿扰时段", "dnd.on": "开启", "dnd.to": "至",
-    "preview": "预览", "preview.title": "各类提醒长什么样", "preview.hint": "上面是各类提醒的静态预览；点每类右边的「预览」会按当前「提示大小」真弹一条（同时试听声音）。", "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
+    "preview": "预览", "preview.title": "各类提醒长什么样（1× 示意）", "preview.hint": "这些是 1× 示意，用来看配色与文字排版；真实大小请点上面的「弹一条看看」或每类右边的「预览」——那会按当前大小弹一条真身。",
+    "preview.real": "真实效果", "preview.real.button": "弹一条看看", "preview.real.hint": "按当前「提示样式 / 提示大小」弹一条真的；点它或 15 秒后消失",
+    "sec.base": "基础", "sec.sound": "提醒声音", "sec.screen": "屏幕提示", "sec.reset": "其它",
+    "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
     /* 设置页顶部「标题 + 归属 + 项目地址」区块（qgynisc 所有插件统一形态） */
     "page.byline": "本项目由插件", "page.bylineTail": "实现", "page.repo": "项目地址", "page.version": "版本", "page.fork": "fork 自", "page.forkTail": "（MIT）",
@@ -178,7 +181,10 @@ const I18N = {
     "toast.close": "Dismiss", "own.hint": "move the pointer or click to dismiss",
     "rate": "Voice rate", "rate.slow": "Slow", "rate.normal": "Normal", "rate.fast": "Fast",
     "dnd": "Do-not-disturb", "dnd.on": "On", "dnd.to": "to",
-    "preview": "Preview", "preview.title": "What each alert looks like", "preview.hint": "The rows above are static previews; “Preview” next to a kind pops the real banner at the current size (and plays its sound).", "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
+    "preview": "Preview", "preview.title": "What each alert looks like (1× sketch)", "preview.hint": "These are 1× sketches (colours and layout). For the real size use “Pop one” above, or “Preview” next to a kind — those pop the real banner at your current size.",
+    "preview.real": "Real preview", "preview.real.button": "Pop one", "preview.real.hint": "pops the real banner at your current style/size; click it or it goes after 15s",
+    "sec.base": "Basics", "sec.sound": "Alert sounds", "sec.screen": "Screen banner", "sec.reset": "Other",
+    "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",
     "page.byline": "Implemented by the plugin", "page.bylineTail": "", "page.repo": "Repository", "page.version": "Version", "page.fork": "Forked from", "page.forkTail": " (MIT)",
   },
@@ -425,12 +431,15 @@ function notify(kind, detail) {
 const TOAST_SHORT_MS = 3600;
 const TOAST_ARM_DELAY_MS = 500;
 const TOAST_MOVE_PX = 8;
+/** 设置页「预览」弹出的真身：点一下即关，最多赖 15 秒兜底（免得看忘了留一条条幅）。 */
+const PREVIEW_MAX_MS = 15000;
 
 /**
- * 纯函数：该用哪种停留策略。
+ * 纯函数：该用哪条停留策略。
  *   toastStyle === "original" → "short"（上游那套：底部彩条 + 3.6 秒自动消失）
  *   自研（默认）               → "untilMove"（常驻到鼠标明显移动或点击）
- *   connected 启动提示永远 "short"，否则每次开页面都会留一条条幅。
+ * 说明：`connected` 那条启动提示已经不再自动弹（见 apply 末尾）；这里保留兜底判断，
+ * 万一以后重新启用，也不会变成一条赖着不走的条幅。
  */
 function toastModeFor(kind, cfg) {
   if (kind === "connected") return "short";
@@ -456,6 +465,7 @@ function createToastStore(options) {
   });
   let current = null;
   let currentAt = 0; // 这一条是什么时候来的（自研浮条显示 HH:MM）
+  let currentIsPreview = false; // 是不是设置页「预览」弹的（预览要无视「悬浮提示」总开关）
   const subs = new Set();
   let timer = null;  // 自动消失 / 武装延迟的取消器
   let disarm = null; // 输入监听的解绑器
@@ -473,6 +483,7 @@ function createToastStore(options) {
   }
   function getCurrent() { return current; }
   function getCurrentAt() { return currentAt; }
+  function getCurrentIsPreview() { return currentIsPreview; }
   /** 关闭。带 kind 时只在「当前还是这一条」时才关，避免上一条的定时器误关后一条。 */
   function close(kind) {
     if (kind !== undefined && kind !== null && current !== kind) return;
@@ -517,20 +528,49 @@ function createToastStore(options) {
       };
     }, TOAST_ARM_DELAY_MS);
   }
-  /** 播一条浮条（kind 为 null = 清空）。 */
-  function emit(kind) {
+  /** 预览专用收起：**只听点击**，不听鼠标移动。
+   *  否则你在设置页点完「预览」、一动鼠标想看仔细，它就跑掉了（2026-10-06 反馈）。 */
+  function armClickDismissal(kind) {
+    if (!env || typeof env.addEventListener !== "function") return;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { env.removeEventListener("pointerdown", onDown); } catch (e) {}
+      close(kind);
+    };
+    const onDown = () => finish();
+    try { env.addEventListener("pointerdown", onDown, { passive: true }); } catch (e) { return; }
+    disarm = () => { done = true; try { env.removeEventListener("pointerdown", onDown); } catch (e) {} };
+  }
+  /**
+   * 播一条浮条（kind 为 null = 清空）。
+   * options.preview = true（设置页的「预览」按钮）：
+   *   - 更宽松的收起方式：点一下 / 15 秒兜底，**不听鼠标移动**，方便停下来看清；
+   *   - 「原方案」仍按它自己的 3.6 秒还原（预览要忠实，不能比真身赖得久）。
+   */
+  function emit(kind, options) {
+    const preview = !!(options && options.preview);
     clearTimers();
-    if (kind) currentAt = Date.now();
+    if (kind) { currentAt = Date.now(); currentIsPreview = preview; }
     current = kind;
     notify();
     if (!kind) return;
     const mode = getMode(kind);
-    if (mode === "untilMove") { armInputDismissal(kind); return; }
-    // 其余（"short" 以及任何非法值）都走自动消失，绝不留关不掉的条幅
-    timer = timeout(() => { timer = null; close(kind); }, TOAST_SHORT_MS);
+    if (mode !== "untilMove") {
+      // "short" 以及任何非法值：自动消失，绝不留关不掉的条幅
+      timer = timeout(() => { timer = null; close(kind); }, TOAST_SHORT_MS);
+      return;
+    }
+    if (preview) {
+      armClickDismissal(kind);
+      timer = timeout(() => { timer = null; close(kind); }, PREVIEW_MAX_MS);
+      return;
+    }
+    armInputDismissal(kind);
   }
 
-  return { emit, close, subscribe, getCurrent, getCurrentAt };
+  return { emit, close, subscribe, getCurrent, getCurrentAt, getCurrentIsPreview };
 }
 
 /* ===========================================================================
@@ -853,8 +893,9 @@ function apply(ctx) {
         setSettings: persistSettings,
         subscribeSettings,
         play: playType,
-        // 设置页每类的「预览」按钮：既试听声音，也按当前大小真弹一条（见 panel.js）
-        previewToast: (kind) => toast.emit(kind),
+        // 设置页「预览」：按当前大小真弹一条**真身**（同时试听声音）。preview 标记让它不受
+        // 「悬浮提示」总开关影响，也不会被你一动鼠标就收掉（见 createToastStore）。
+        previewToast: (kind) => toast.emit(kind, { preview: true }),
         requestNotify: requestNotifyPermission,
         uploadCustom: uploadCustomAudio,
       }))
@@ -865,6 +906,7 @@ function apply(ctx) {
         subscribe: toast.subscribe,
         getCurrent: toast.getCurrent,
         getCurrentAt: toast.getCurrentAt,
+        isPreview: toast.getCurrentIsPreview,
       })
     )));
   });

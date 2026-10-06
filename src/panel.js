@@ -37,6 +37,20 @@ const previewRowStyle = { display: "flex", alignItems: "center", gap: "10px" };
 const previewLabelStyle = { width: "76px", flex: "0 0 auto", fontSize: 12, opacity: 0.75 };
 const previewCellStyle = { flex: "1 1 auto", minWidth: 0 };
 
+/** 分组小标题：上边一条分隔线 + 小号粗体字（与 @qgynisc/dsh-inline-pastes 设置页同一形态）。
+ *  用户要求：「把提示相关的设置要放在一起，上下用线分开」。 */
+const sectionStyle = {
+  marginTop: "4px",
+  paddingTop: "8px",
+  borderTop: "0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.25))",
+  color: "var(--dsw-alias-label-tertiary, rgba(128,128,128,0.85))",
+  fontSize: 12,
+  fontWeight: 600,
+};
+function section(titleKey) {
+  return react.createElement("div", { style: sectionStyle }, t(titleKey));
+}
+
 /* 设置页顶部「标题 + 归属 + 项目地址」区块。
  * 形态与配色对齐 @qgynisc/dsh-inline-pastes 的设置页（qgynisc 所有插件统一成这样）：
  *   标题 15px/600 → 次行 12px/18px 三次色 → 分隔线。
@@ -113,16 +127,14 @@ function SettingsPanel(props) {
         t("page.fork") + " ",
         react.createElement("a", { href: UPSTREAM_URL, target: "_blank", rel: "noreferrer", style: headLinkStyle }, "Machine-126/dsh-alert-sound"),
         t("page.forkTail"))),
+    /* ===================== 基础 ===================== */
+    section("sec.base"),
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("lang.label")),
       react.createElement("select", { value: s.lang || "auto", onChange: e => commit(Object.assign({}, s, { lang: e.target.value })), style: selStyle },
         react.createElement("option", { value: "auto" }, t("lang.auto")),
         react.createElement("option", { value: "zh" }, t("lang.zh")),
         react.createElement("option", { value: "en" }, t("lang.en")))),
-    react.createElement("div", { style: rowStyle },
-      react.createElement("span", { style: keyStyle }, t("volume")),
-      react.createElement("input", { type: "range", min: "0", max: "2", step: "0.05", value: s.volume, onChange: e => commit(Object.assign({}, s, { volume: Number(e.target.value) })), style: { width: "160px" } }),
-      react.createElement("span", null, Math.round(s.volume * 100) + "%")),
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("scope")),
       react.createElement("select", { value: s.scope || "all", onChange: e => commit(Object.assign({}, s, { scope: e.target.value })), style: selStyle },
@@ -141,6 +153,27 @@ function SettingsPanel(props) {
         react.createElement("input", { type: "checkbox", checked: !!s.notifyEnabled, onChange: e => { const next = !!e.target.checked; commit(Object.assign({}, s, { notifyEnabled: next })); if (next) props.requestNotify(); } }),
         react.createElement("span", { style: mutedStyle }, t("notify.hint")))),
     react.createElement("div", { style: rowStyle },
+      react.createElement("span", { style: keyStyle }, t("dnd")),
+      react.createElement("label", { style: { display: "flex", alignItems: "center", gap: "6px" } },
+        react.createElement("input", { type: "checkbox", checked: !!s.dndEnabled, onChange: e => commit(Object.assign({}, s, { dndEnabled: !!e.target.checked })) }),
+        react.createElement("span", { style: mutedStyle }, t("dnd.on"))),
+      react.createElement("select", { value: String(s.dndStart), onChange: e => commit(Object.assign({}, s, { dndStart: Number(e.target.value) })), style: selStyle }, hourOpts()),
+      react.createElement("span", { style: mutedStyle }, t("dnd.to")),
+      react.createElement("select", { value: String(s.dndEnd), onChange: e => commit(Object.assign({}, s, { dndEnd: Number(e.target.value) })), style: selStyle }, hourOpts())),
+
+    /* ===================== 提醒声音 ===================== */
+    section("sec.sound"),
+    react.createElement("div", { style: rowStyle },
+      react.createElement("span", { style: keyStyle }, t("volume")),
+      react.createElement("input", { type: "range", min: "0", max: "2", step: "0.05", value: s.volume, onChange: e => commit(Object.assign({}, s, { volume: Number(e.target.value) })), style: { width: "160px" } }),
+      react.createElement("span", null, Math.round(s.volume * 100) + "%")),
+    react.createElement("div", { style: rowStyle },
+      react.createElement("span", { style: keyStyle }, t("rate")),
+      react.createElement("select", { value: String(s.voiceRate || 1), onChange: e => commit(Object.assign({}, s, { voiceRate: Number(e.target.value) })), style: selStyle },
+        react.createElement("option", { value: "0.7" }, t("rate.slow")),
+        react.createElement("option", { value: "1" }, t("rate.normal")),
+        react.createElement("option", { value: "1.3" }, t("rate.fast")))),
+    react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("read")),
       react.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px" } },
         react.createElement("input", { type: "checkbox", checked: !!s.readOutput, onChange: e => commit(Object.assign({}, s, { readOutput: !!e.target.checked })) }),
@@ -153,44 +186,34 @@ function SettingsPanel(props) {
         react.createElement("option", { value: "120000" }, t("stall.2")),
         react.createElement("option", { value: "300000" }, t("stall.5"))),
       react.createElement("span", { style: mutedStyle }, t("stall.hint"))),
+    /* 每类提醒：启用 + 音色 + 一键预览（放在「提醒声音」组末尾） */
+    rows,
+
+    /* ===================== 屏幕提示（提示相关全在一起） ===================== */
+    section("sec.screen"),
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("toast")),
       react.createElement("label", { style: { display: "flex", alignItems: "center", gap: "8px" } },
         react.createElement("input", { type: "checkbox", checked: !!s.showToast, onChange: e => commit(Object.assign({}, s, { showToast: !!e.target.checked })) }),
         react.createElement("span", { style: mutedStyle }, t("toast.hint")))),
-    /* 两种浮条实现二选一：原方案（上游彩条，3.6 秒自关）/ 自研常驻条 */
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("toastStyle")),
-      react.createElement("select", { value: s.toastStyle === "original" ? "original" : "own", onChange: e => commit(Object.assign({}, s, { toastStyle: e.target.value })), style: selStyle },
+      react.createElement("select", { value: s.toastStyle === "original" ? "original" : "own", onChange: e => { commit(Object.assign({}, s, { toastStyle: e.target.value })); props.previewToast("done"); }, style: selStyle },
         react.createElement("option", { value: "own" }, t("toastStyle.own")),
         react.createElement("option", { value: "original" }, t("toastStyle.original")))),
-    /* 自研浮条的放大倍数：只对「自研常驻条」生效（原方案永远是上游那句 14px 彩条） */
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("toastScale")),
-      react.createElement("select", { value: String(toastScaleOf(s)), onChange: e => commit(Object.assign({}, s, { toastScale: Number(e.target.value) })), style: selStyle },
+      react.createElement("select", { value: String(toastScaleOf(s)), onChange: e => { commit(Object.assign({}, s, { toastScale: Number(e.target.value) })); props.previewToast("done"); }, style: selStyle },
         TOAST_SCALES.map(n => react.createElement("option", { key: n, value: String(n) }, n + "×"))),
       react.createElement("span", { style: mutedStyle }, t("toastScale.hint"))),
+    /* 真实预览：按当前大小弹一条真身（调完上面两项顺手点一下就看到了） */
     react.createElement("div", { style: rowStyle },
-      react.createElement("span", { style: keyStyle }, t("rate")),
-      react.createElement("select", { value: String(s.voiceRate || 1), onChange: e => commit(Object.assign({}, s, { voiceRate: Number(e.target.value) })), style: selStyle },
-        react.createElement("option", { value: "0.7" }, t("rate.slow")),
-        react.createElement("option", { value: "1" }, t("rate.normal")),
-        react.createElement("option", { value: "1.3" }, t("rate.fast")))),
-    react.createElement("div", { style: rowStyle },
-      react.createElement("span", { style: keyStyle }, t("dnd")),
-      react.createElement("label", { style: { display: "flex", alignItems: "center", gap: "6px" } },
-        react.createElement("input", { type: "checkbox", checked: !!s.dndEnabled, onChange: e => commit(Object.assign({}, s, { dndEnabled: !!e.target.checked })) }),
-        react.createElement("span", { style: mutedStyle }, t("dnd.on"))),
-      react.createElement("select", { value: String(s.dndStart), onChange: e => commit(Object.assign({}, s, { dndStart: Number(e.target.value) })), style: selStyle }, hourOpts()),
-      react.createElement("span", { style: mutedStyle }, t("dnd.to")),
-      react.createElement("select", { value: String(s.dndEnd), onChange: e => commit(Object.assign({}, s, { dndEnd: Number(e.target.value) })), style: selStyle }, hourOpts())),
-    react.createElement("div", { style: rowStyle },
-      react.createElement("button", { style: btnStyle, onClick: () => { if (typeof window === "undefined" || typeof window.confirm !== "function" || window.confirm(t("reset.confirm"))) commit(deepMerge(DEFAULTS, {})); } }, t("reset")),
-      react.createElement("span", { style: mutedStyle }, t("reset.hint"))),
-    rows,
-    /* ---- 各类提醒长什么样：静态预览 ----
-     * 与真身**共用同一个 OwnToast**（inline 模式、固定按 1 倍渲染），所以预览不会跟实际
-     * 效果漂移；想看当前「提示大小」下的真身，点上面每类右边的「预览」按钮弹一条真的。 */
+      react.createElement("span", { style: keyStyle }, t("preview.real")),
+      react.createElement("button", { style: btnStyle, onClick: () => props.previewToast("done") }, t("preview.real.button")),
+      react.createElement("span", { style: mutedStyle }, t("preview.real.hint"))),
+    /* ---- 各类提醒长什么样：静态预览（1× 示意，看配色与文字）----
+     * 与真身**共用同一个 OwnToast**（inline 模式），所以排版配色不会漂移；
+     * **真实大小**请点上面的「弹一条看看」或每类右边的「预览」。 */
     react.createElement("div", { style: previewTitleStyle }, t("preview.title")),
     react.createElement("div", { style: previewListStyle },
       KINDS.map(kind => react.createElement("div", { key: kind, style: previewRowStyle },
@@ -198,6 +221,12 @@ function SettingsPanel(props) {
         react.createElement("div", { style: previewCellStyle },
           react.createElement(OwnToast, { kind: kind, at: Date.now(), inline: true }))))),
     react.createElement("div", { style: hintStyle }, t("preview.hint")),
+
+    /* ===================== 恢复默认 ===================== */
+    section("sec.reset"),
+    react.createElement("div", { style: rowStyle },
+      react.createElement("button", { style: btnStyle, onClick: () => { if (typeof window === "undefined" || typeof window.confirm !== "function" || window.confirm(t("reset.confirm"))) commit(deepMerge(DEFAULTS, {})); } }, t("reset")),
+      react.createElement("span", { style: mutedStyle }, t("reset.hint"))),
     react.createElement("div", { style: hintStyle }, t("hint"))
   );
 }
@@ -300,7 +329,10 @@ function AlertToast(props) {
   const at = atPair[0], setAt = atPair[1];
   react.useEffect(() => props.subscribe(() => { setMsg(props.getCurrent()); setAt(props.getCurrentAt()); }), []);
   if (!msg) return null;
-  if (!settings.showToast) return null;
+  // 「预览」是你主动点的，所以即使「悬浮提示」总开关关着也要显示——否则点了预览什么都没发生，
+  // 用户会以为功能坏了（这正是 2026-10-06 反馈「无法看到真实效果」的一种可能）。
+  const isPreview = typeof props.isPreview === "function" ? props.isPreview() : false;
+  if (!settings.showToast && !isPreview) return null;
   if (settings.toastStyle === "original") return react.createElement(OriginalToast, { kind: msg });
   return react.createElement(OwnToast, { kind: msg, at: at });
 }

@@ -121,3 +121,34 @@ test('归属区块的版本号跟着 package.json 走（不会写死）', () => 
   assert.ok(match, `没找到版本号：${joined}`)
   assert.equal(match[1], manifest.version)
 })
+
+test('设置页按组分块：组标题上方有分隔线，提示相关设置集中在一组', () => {
+  const page = renderSettingsPage()
+  const children = page.props.children
+
+  // 分组标题 = 带 borderTop 的那个 div
+  const sections = []
+  children.forEach((child, index) => {
+    const style = child && child.props && child.props.style
+    if (style && style.borderTop) sections.push({ index, text: texts(child).join('') })
+  })
+  assert.deepEqual(sections.map((item) => item.text), ['基础', '提醒声音', '屏幕提示', '其它'])
+  assert.ok(sections[0].index > 0, '第一个元素必须还是归属区块（见全局约定）')
+
+  const at = (title) => sections.find((item) => item.text === title).index
+  const block = (from, to) => children.slice(at(from), at(to)).map((child) => texts(child).join('')).join('|')
+
+  // 「屏幕提示」要把提示相关的项全包进来，且不掺别的组的东西
+  const screen = block('屏幕提示', '其它')
+  for (const needle of ['悬浮提示', '提示样式', '提示大小', '真实效果', '各类提醒长什么样']) {
+    assert.ok(screen.includes(needle), `「屏幕提示」组里缺 ${needle}`)
+  }
+  for (const other of ['界面语言', '音量', '勿扰时段', '系统通知']) {
+    assert.ok(!screen.includes(other), `「屏幕提示」组里不该混进 ${other}`)
+  }
+
+  // 基础组里也不该出现提示项
+  const base = block('基础', '提醒声音')
+  assert.ok(base.includes('界面语言'))
+  assert.ok(!base.includes('提示样式'), '「基础」组里不该出现提示项')
+})

@@ -216,3 +216,34 @@ test('关掉「悬浮提示」就完全不渲染', () => {
   const { element } = renderToast('done', { settings: { lang: 'zh', showToast: false } })
   assert.equal(element, null)
 })
+
+test('预览能穿透「悬浮提示」总开关：关掉总开关后点预览仍然看得到', () => {
+  const { registered, mod } = makeMod({ lang: 'zh', showToast: false })
+  const overlay = registered['shell.overlay'][0].component()
+  const AlertToast = overlay.type
+
+  const previewElement = AlertToast(Object.assign({}, overlay.props, {
+    getCurrent: () => 'done',
+    getCurrentAt: () => Date.parse('2026-10-06T14:32:00'),
+    isPreview: () => true,
+  }))
+  assert.ok(previewElement, '预览时即使总开关关着也必须渲染（否则点预览像坏了）')
+  assert.equal(previewElement.type(previewElement.props).props.style.background, mod.__test.TOAST_MAP.done.bg)
+
+  const normalElement = AlertToast(Object.assign({}, overlay.props, {
+    getCurrent: () => 'done',
+    getCurrentAt: () => 0,
+    isPreview: () => false,
+  }))
+  assert.equal(normalElement, null, '普通提醒在总开关关着时仍不该出现')
+})
+
+test('自动预览：改「提示大小」会立刻弹一条真身（直接看到新尺寸）', () => {
+  const { page, getCurrent } = renderPage({ settings: { lang: 'zh' } })
+  const scaleSelects = collect(page, (node) => node.type === 'select'
+    && Array.isArray(node.props.children)
+    && node.props.children.some((option) => option && option.props && option.props.children === '8×'))
+  assert.equal(scaleSelects.length, 1, '应当只有一个「提示大小」下拉')
+  scaleSelects[0].props.onChange({ target: { value: '8' } })
+  assert.equal(getCurrent(), 'done', '改大小后应立刻弹一条真身')
+})

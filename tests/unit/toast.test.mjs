@@ -214,3 +214,48 @@ test('没有可用的 window（env 为 null）时不会抛错，只是不会自�
   store.close()
   assert.equal(store.getCurrent(), null)
 })
+
+/* ---------------- 设置页「预览」弹真身（options.preview） ---------------- */
+
+test('预览模式：只听点击、不听鼠标移动（否则你一动鼠标想看仔细，它就没了）', () => {
+  const { env, timers, store } = makeStore('untilMove')
+  store.emit('done', { preview: true })
+  assert.equal(store.getCurrent(), 'done')
+  assert.equal(store.getCurrentIsPreview(), true, '要标记成预览（面板据此无视总开关）')
+  assert.equal(env.count('pointermove'), 0, '预览不该听鼠标移动')
+  assert.equal(env.count('pointerdown'), 1, '预览要能点一下关掉')
+
+  env.fire('pointermove', { clientX: 600, clientY: 400 })
+  assert.equal(store.getCurrent(), 'done', '鼠标移动不该关掉预览')
+  env.fire('pointerdown', {})
+  assert.equal(store.getCurrent(), null)
+})
+
+test('预览模式：有 15 秒兜底，绝不留一条关不掉的条幅', () => {
+  const { timers, store } = makeStore('untilMove')
+  store.emit('done', { preview: true })
+  assert.equal(timers.run(TOAST_SHORT_MS), 0, '预览不该用「原方案」那条 3.6 秒定时器')
+  assert.equal(timers.size(), 1, '应当有一个兜底定时器在排队')
+  assert.equal(timers.run(15000), 1, '兜底是 15 秒（PREVIEW_MAX_MS）')
+  assert.equal(store.getCurrent(), null)
+})
+
+test('预览模式：若当前是「原方案」，仍按它自己的 3.6 秒还原（预览要忠实于真身）', () => {
+  const { env, timers, store } = makeStore('short')
+  store.emit('done', { preview: true })
+  assert.equal(env.count('pointerdown'), 0)
+  assert.equal(timers.run(TOAST_SHORT_MS), 1)
+  assert.equal(store.getCurrent(), null)
+})
+
+test('非预览的提醒仍按老规矩（鼠标移动即关），isPreview 标记会复位', () => {
+  const { env, timers, store } = makeStore('untilMove')
+  store.emit('done', { preview: true })
+  assert.equal(store.getCurrentIsPreview(), true)
+  store.emit('failed')
+  assert.equal(store.getCurrentIsPreview(), false)
+  timers.run(TOAST_ARM_DELAY_MS)
+  env.fire('pointermove', { clientX: 0, clientY: 0 })
+  env.fire('pointermove', { clientX: 40, clientY: 0 })
+  assert.equal(store.getCurrent(), null)
+})
