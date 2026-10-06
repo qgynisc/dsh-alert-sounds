@@ -1,0 +1,32 @@
+{
+  "source": "https://github.com/Machine-126/dsh-alert-sound",
+  "ref": "main",
+  "npm": "@machine-126/dsh-alert-sound@0.3.14",
+  "note": "上游 main 分支的逐字节快照（已用 GitHub API 校验哈希一致）。用于 scripts/sync-upstream.mjs 做差异比对：本仓库是 src/ 重构过的，无法直接 git merge 上游，靠这个快照把上游每个 hunk 映射回 src/。",
+  "files": {
+    "cordis.patch.yml": {
+      "sha256": "f3faa1b3e0794a33d0159304c753280d99c72b8bdf48fce55e3eba38adc79f59",
+      "bytes": 289
+    },
+    "LICENSE": {
+      "sha256": "6cfbd6d433db21c540b49470cbcabeb17633cbde30324fa989391abc9b1f9fd7",
+      "bytes": 1068
+    },
+    "README.md": {
+      "sha256": "281161a8a0b1c5b5b211a8f4b7410cd115aa7c9e0e708a35bbd7f4cf244487c4",
+      "bytes": 6930
+    },
+    "package.json": {
+      "sha256": "cb45676c913f1396f394582766c09d7711cc751db45f539deb447d00b82fab14",
+      "bytes": 1726
+    },
+    "lib/client.js": {
+      "sha256": "e93f6c7d237cd14252ddf25ab0008b2ed2956bbb0e8a62e0f891298789a1698a",
+      "bytes": 44544
+    },
+    "lib/index.mjs": {
+      "sha256": "7a92cce8f09acc1e135659ba0da3fac763c6b963024924d5fc3903947a0c4392",
+      "bytes": 522
+    }
+  }
+}

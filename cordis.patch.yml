@@ -1,0 +1,11 @@
+# dsh-alert-sounds bundle patch：把一个 loader 条目插进 profile 的层叠树。
+#
+# 行 id 与包名**刻意不同**：DSH 的插件卡片会分别打印「行 id」和「模块名」，
+# 两者相同时同一个字符串会渲染两遍（官方 bundle 也是这个规矩，如 agent-team + @deepseek-ai/...）。
+#
+# 宿主半边（package root → lib/index.js）只占位：真正的能力全在浏览器半边，
+# dsh-client-modules 顺着本包的 `dsh.client` 声明 + `exports["./client"]` 自动发现
+# lib/client.js，不需要在这里额外注册。
+- insert:
+    - id: alert-sounds
+      name: '@qgynisc/dsh-alert-sounds'

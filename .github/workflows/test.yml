@@ -1,0 +1,63 @@
+# push / PR 自动验证：构建 + 单测 + 加载器解析链自检。
+#
+# 为什么不上「真浏览器」那层：本插件的界面部分（设置页 / 浮条）在插件系统里是可选装饰，
+# 单测用假 ctx + React 替身就能覆盖决策路径（见 tests/unit/toast.test.mjs、detect.test.mjs）。
+# 这里要抓的是两类**本机抓不到**的问题：
+#   ① 跨平台：macOS 文件系统大小写不敏感，Ubuntu 敏感（导入路径写错大小写只有 Linux 会炸）；
+#   ② 跨 Node 版本：package.json 声明 engines >= 20，而开发机只在 26 上跑过。
+# 它**抓不到** "DSH 升级把契约改了" —— 单测用的是假 ctx，不是真 DSH。
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+      # 同一条命令本地也能跑：构建 → 单元测试 → 用临时假 profile 走一遍加载器解析链。
+      # 注意**不跑 npm install**：本包零运行时依赖，而 peerDependencies 里的
+      # @deepseek-ai/cordis 是 DSH 自带的私有包，装不上也没必要装。
+      - name: 构建 + 单测 + 安装自检
+        run: npm run test:ci
+
+  # 单独盯一件事：src/ 改了但忘了重新构建并提交 lib/。
+  # （lib/ 必须入库——用户用 git 地址安装时不会跑构建。）
+  build-freshness:
+    name: lib/ 与 src/ 是否同步
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: 重新构建并检查有没有差异
+        run: |
+          npm run build
+          if ! git diff --quiet -- lib/; then
+            echo "::error::lib/ 与 src/ 不同步：本地跑 npm run build 并把 lib/ 一起提交"
+            git diff --stat -- lib/
+            exit 1
+          fi
+          echo "✔ lib/ 与 src/ 同步"

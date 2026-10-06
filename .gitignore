@@ -1,0 +1,18 @@
+# 依赖与本地缓存
+node_modules/
+.pnpm-store/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 日志与临时文件
+*.log
+*.tmp
+*.bak
+
+# 说明：lib/ 是**构建产物但必须入库**——DSH 直接加载 lib/client.js，用户用
+# `dsh plugin add <git 地址>` 安装时不会跑构建。改了 src/ 记得 `npm run build`
+# 并把 lib/ 一起提交（与上游 dsh-alert-sound、dsh-bottom-info-bar 的做法一致）。
