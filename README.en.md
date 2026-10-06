@@ -14,6 +14,12 @@ Notification sounds and on-screen banners for the **DeepSeek Harness (dsh) web G
 > ① rename + repackage (package name, loader id, slot ids and localStorage keys are all its own);
 > ② **make the completion banner configurable instead of a fixed 3.6s flash** — so you still see it when you were away from the screen.
 
+## Screenshots
+
+![Settings → Alerts → On-screen banners: colours and layout of the five alert kinds (1×)](https://raw.githubusercontent.com/qgynisc/dsh-alert-sounds/main/docs/images/settings-toast.png)
+
+The **On-screen banners** group under Settings → **Alerts**: all five kinds (approval / answer / complete / error / stalled) at a glance. The bars shown are **1× schematic previews** rendered by the **same component as the real banner**, so they never drift from the real thing; each row's **Preview** button pops a real banner at your current size, and **Pop one / check size** does the same with your current style.
+
 ## What this fork changes (vs upstream 0.3.14)
 
 | | Upstream | This fork |
