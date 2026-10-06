@@ -44,10 +44,11 @@ const DEFAULT_TYPES = {
   stalled: { enabled: true, sound: "fault" },
 };
 /**
- * 默认设置。相对上游的两处改动：
+ * 默认设置。相对上游的三处改动：
  *   - `showToast: true`：上游默认关，于是提示条根本不会出现；
  *   - `toastStyle: "own"`：默认用**自研常驻条**（直到鼠标明显移动或点击才收）；
- *     想回到上游那套「底部彩条 + 3.6 秒自动消失」，设置里选「原方案」。
+ *     想回到上游那套「底部彩条 + 3.6 秒自动消失」，设置里选「原方案」；
+ *   - `toastScale: 5`：自研浮条默认放大 5 倍（「一走一过也要看得见」），设置里可调 1–10 倍。
  */
 const DEFAULTS = {
   volume: 0.7,
@@ -58,6 +59,7 @@ const DEFAULTS = {
   stallMs: 0,
   showToast: true,
   toastStyle: "own",
+  toastScale: 5,
   voiceRate: 1,
   dndEnabled: false,
   dndStart: 22,
@@ -152,6 +154,7 @@ const I18N = {
     "stall": "停滞检测", "stall.hint": "开启后才会触发上面第 5 类“卡住”提醒（判定依据不精确，实验性）", "stall.off": "关", "stall.1": "1分钟", "stall.2": "2分钟", "stall.5": "5分钟",
     "toast": "悬浮提示", "toast.hint": "提示条显示在屏幕底部中间（默认开；提示音为主，提示条是给不在屏幕前的人看的）",
     "toastStyle": "提示样式", "toastStyle.own": "自研常驻条（直到鼠标移动或点击）", "toastStyle.original": "原方案（上游彩条，3.6 秒自动消失）",
+    "toastScale": "提示大小", "toastScale.hint": "只影响「自研常驻条」",
     "toast.close": "关闭提示", "own.hint": "鼠标移动或点击收起",
     "rate": "语音语速", "rate.slow": "慢", "rate.normal": "标准", "rate.fast": "快",
     "dnd": "勿扰时段", "dnd.on": "开启", "dnd.to": "至",
@@ -171,6 +174,7 @@ const I18N = {
     "stall": "Stall detection", "stall.hint": "Only when on does the 5th “Stalled” alert fire (heuristic; experimental)", "stall.off": "Off", "stall.1": "1 min", "stall.2": "2 min", "stall.5": "5 min",
     "toast": "Toast", "toast.hint": "Shows a banner at the bottom centre (on by default; sounds are primary, the banner is for when you are away)",
     "toastStyle": "Toast style", "toastStyle.own": "Built-in persistent card (until pointer moves or clicks)", "toastStyle.original": "Original (upstream bar, auto-dismiss after 3.6s)",
+    "toastScale": "Toast size", "toastScale.hint": "affects the built-in persistent card only",
     "toast.close": "Dismiss", "own.hint": "move the pointer or click to dismiss",
     "rate": "Voice rate", "rate.slow": "Slow", "rate.normal": "Normal", "rate.fast": "Fast",
     "dnd": "Do-not-disturb", "dnd.on": "On", "dnd.to": "to",
@@ -876,6 +880,7 @@ exports.__test = {
   DEFAULT_TYPES,
   I18N,
   KINDS,
+  TOAST_MAP,
   SOUND_IDS,
   STORE_KEY,
   CUSTOM_KEY,

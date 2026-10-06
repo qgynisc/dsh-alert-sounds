@@ -156,6 +156,12 @@ function SettingsPanel(props) {
       react.createElement("select", { value: s.toastStyle === "original" ? "original" : "own", onChange: e => commit(Object.assign({}, s, { toastStyle: e.target.value })), style: selStyle },
         react.createElement("option", { value: "own" }, t("toastStyle.own")),
         react.createElement("option", { value: "original" }, t("toastStyle.original")))),
+    /* 自研浮条的放大倍数：只对「自研常驻条」生效（原方案永远是上游那句 14px 彩条） */
+    react.createElement("div", { style: rowStyle },
+      react.createElement("span", { style: keyStyle }, t("toastScale")),
+      react.createElement("select", { value: String(toastScaleOf(s)), onChange: e => commit(Object.assign({}, s, { toastScale: Number(e.target.value) })), style: selStyle },
+        TOAST_SCALES.map(n => react.createElement("option", { key: n, value: String(n) }, n + "×"))),
+      react.createElement("span", { style: mutedStyle }, t("toastScale.hint"))),
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("rate")),
       react.createElement("select", { value: String(s.voiceRate || 1), onChange: e => commit(Object.assign({}, s, { voiceRate: Number(e.target.value) })), style: selStyle },
@@ -196,40 +202,88 @@ function OriginalToast(props) {
   }, t(props.kind));
 }
 
-/* ===================== 浮条 2：自研常驻条 ===================== */
+/* ===================== 浮条 2：自研常驻条 =====================
+ *
+ * 需求（2026-10-06，用户原话）：「提示条，不要用黑色，不明显，也用原来的绿色，
+ * 大小先放大 5 倍……这东西要的就是一走一过，明显能看到才行」。所以：
+ *   1. 背景用**该类别的原色**（完成 = 原来的绿色 #16a34a，出错 = 红，审批 = 琥珀，提问 = 紫），
+ *      不再用深色黑卡片——黑卡片在浅色/深色界面里都不抢眼，瞥一眼注意不到；
+ *   2. 尺寸整体放大：**只改 OWN_TOAST_SCALE 一个数**（字号、内边距、圆点、关闭按钮、
+ *      离底距离全按它缩放），方便按实际观感再微调。
+ * scale=1 时的像素值集中在 OWN_TOAST_BASE，想单独调某一项也方便。 */
+const OWN_TOAST_SCALE = 5; // = DEFAULTS.toastScale，也是设置缺失时的兜底
+const OWN_TOAST_BASE = {
+  paddingX: 16, paddingY: 12, gap: 10,
+  dot: 10, title: 14, sub: 11, close: 22, closeFont: 15,
+  bottom: 28, radius: 12, marginX: 16,
+};
+/** 设置里「提示大小」可选的倍数。 */
+const TOAST_SCALES = [1, 2, 3, 4, 5, 6, 8];
+/** 从设置里取放大倍数：非法/缺失回默认，并夹在 1–10 之间（别把整个屏幕吃光）。 */
+function toastScaleOf(cfg) {
+  const value = Number(cfg && cfg.toastScale);
+  if (!Number.isFinite(value)) return OWN_TOAST_SCALE;
+  return Math.min(10, Math.max(1, value));
+}
+
 function OwnToast(props) {
   const accent = (TOAST_MAP[props.kind] || TOAST_MAP.connected).bg;
-  const card = Object.assign({}, TOAST_BASE, {
+  const k = toastScaleOf(settings);
+  const b = OWN_TOAST_BASE;
+  const px = (value) => Math.round(value * k) + "px";
+  const card = {
+    position: "fixed",
+    left: "50%",
+    bottom: px(b.bottom),
+    transform: "translateX(-50%)",
+    zIndex: 2147483000,
+    fontFamily: "system-ui, sans-serif",
     display: "flex",
     alignItems: "center",
-    gap: "10px",
-    padding: "12px 14px 12px 16px",
-    borderRadius: "12px",
+    gap: px(b.gap),
+    boxSizing: "border-box",
+    // 放大后要防止在窄窗口里溢出屏幕：限宽 + 允许换行
+    maxWidth: "calc(100vw - " + (b.marginX * 2) + "px)",
+    padding: px(b.paddingY) + " " + px(b.paddingX),
+    borderRadius: px(b.radius),
     color: "#fff",
-    background: "rgba(24,24,27,0.94)",
-    border: "1px solid rgba(255,255,255,0.10)",
-    borderLeft: "4px solid " + accent,
-    boxShadow: "0 10px 34px rgba(0,0,0,.34)",
+    background: accent,
+    boxShadow: "0 " + px(4) + " " + px(14) + " rgba(0,0,0,.35)",
     pointerEvents: "none",
-  });
+  };
+  const dot = {
+    width: px(b.dot),
+    height: px(b.dot),
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.9)",
+    flex: "0 0 auto",
+  };
+  const textCol = { display: "flex", flexDirection: "column", gap: px(2), minWidth: 0 };
+  const title = { fontWeight: 600, fontSize: px(b.title), lineHeight: 1.2, wordBreak: "break-word" };
+  const sub = { fontSize: px(b.sub), lineHeight: 1.2, opacity: 0.85, wordBreak: "break-word" };
   const closeBtn = {
-    marginLeft: "4px",
-    width: "22px",
-    height: "22px",
-    lineHeight: "18px",
-    fontSize: "15px",
-    borderRadius: "6px",
+    marginLeft: px(4),
+    width: px(b.close),
+    height: px(b.close),
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    lineHeight: 1,
+    fontSize: px(b.closeFont),
+    borderRadius: px(6),
     cursor: "pointer",
     color: "#fff",
-    background: "transparent",
-    border: "1px solid rgba(255,255,255,0.28)",
+    background: "rgba(255,255,255,0.16)",
+    border: "1px solid rgba(255,255,255,0.5)",
     pointerEvents: "auto",
+    flex: "0 0 auto",
   };
   return react.createElement("div", { style: card, role: "status", "aria-live": "polite" },
-    react.createElement("span", { style: { width: "9px", height: "9px", borderRadius: "50%", background: accent, flex: "0 0 auto" } }),
-    react.createElement("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } },
-      react.createElement("span", { style: { fontWeight: 600, fontSize: 14, lineHeight: 1.3 } }, t(props.kind)),
-      react.createElement("span", { style: { fontSize: 11, opacity: 0.62 } }, formatClock(props.at) + " · " + t("own.hint"))),
+    react.createElement("span", { style: dot }),
+    react.createElement("div", { style: textCol },
+      react.createElement("span", { style: title }, t(props.kind)),
+      react.createElement("span", { style: sub }, formatClock(props.at) + " · " + t("own.hint"))),
     react.createElement("button", { style: closeBtn, onClick: props.onClose, title: t("toast.close"), "aria-label": t("toast.close") }, "×")
   );
 }
@@ -246,3 +300,9 @@ function AlertToast(props) {
   if (settings.toastStyle === "original") return react.createElement(OriginalToast, { kind: msg });
   return react.createElement(OwnToast, { kind: msg, at: at, onClose: props.close });
 }
+
+/* 供单测读取浮条尺寸旋钮（panel.js 的 const 在 __test 之后才求值，所以这里补挂）。 */
+exports.__test.OWN_TOAST_SCALE = OWN_TOAST_SCALE;
+exports.__test.OWN_TOAST_BASE = OWN_TOAST_BASE;
+exports.__test.TOAST_SCALES = TOAST_SCALES;
+exports.__test.toastScaleOf = toastScaleOf;
