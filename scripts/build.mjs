@@ -11,6 +11,7 @@
  * 锚点替换（都在 src/client.js 里）：
  *   `/*__VERSION__*\/ '0.0.0'` → package.json 的 version
  *   `/*__PANEL__*\/ ''`         → src/panel.js 原文（与 client.js 同一模块作用域）
+ *   `/*__AUDIO__*\/ null`       → assets/audio/*.mp3 的 base64 dataURL 表
  *
  * 用法：node scripts/build.mjs
  */
@@ -24,6 +25,9 @@ const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
 const PLUGIN_ID = MANIFEST.name
 const VERSION_ANCHOR = "/*__VERSION__*/ '0.0.0'"
 const PANEL_ANCHOR = "/*__PANEL__*/ ''"
+const AUDIO_ANCHOR = "/*__AUDIO__*/ null"
+/** 内置音色对应的音频文件（assets/audio/<id>.mp3；由 scripts/render-audio.mjs 生成并入库）。 */
+const AUDIO_IDS = ['ding', 'fault', 'tap', 'alarm']
 
 /** 读一个源文件，缺失直接报错（不静默产出半个产物）。 */
 function readSource(relative) {
@@ -49,6 +53,33 @@ if (!clientSource.includes(PANEL_ANCHOR)) {
   throw new Error(`构建失败：src/client.js 里找不到设置页锚点 ${PANEL_ANCHOR}`)
 }
 clientSource = clientSource.replace(PANEL_ANCHOR, () => readSource('src/panel.js').trim())
+
+/* ---- 内置音色（assets/audio/*.mp3 → base64 dataURL）内联 ----
+ * 为什么不放同目录文件让运行时 fetch：DSH 桌面端通过 `__DSH_TRANSPORT__.loadBundle` 把客户端
+ * 插件**当源码文本**取进页面，插件包里的兄弟文件没有可依赖的 URL。内联后离线可用、不依赖宿主
+ * 怎么托管；代价是 bundle 变大（四段合计约 50KB → base64 后约 70KB）。
+ * 音频是**渲染产物但必须入库**（assets/audio/*.mp3），否则构建与 CI 复现不出同一份 lib/。 */
+if (!clientSource.includes(AUDIO_ANCHOR)) {
+  throw new Error(`构建失败：src/client.js 里找不到音频锚点 ${AUDIO_ANCHOR}`)
+}
+const audioTable = {}
+for (const id of AUDIO_IDS) {
+  const relative = `assets/audio/${id}.mp3`
+  let bytes
+  try {
+    bytes = readFileSync(join(ROOT, relative))
+  } catch (error) {
+    throw new Error(`构建失败：读不到 ${relative}（${error.message}）。跑 node scripts/render-audio.mjs 重新生成，或从仓库里把它找回来。`)
+  }
+  if (bytes.length < 1024) throw new Error(`构建失败：${relative} 只有 ${bytes.length} 字节，明显不是一段音频`)
+  // 只做最轻的形状检查：ID3 头或 MPEG 帧同步（0xFF Ex/Fx）
+  const head = bytes.subarray(0, 3).toString('latin1')
+  const isId3 = head === 'ID3'
+  const isMpeg = bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0
+  if (!isId3 && !isMpeg) throw new Error(`构建失败：${relative} 既不是 ID3 也不是 MPEG 帧（头字节 ${bytes.subarray(0, 4).toString('hex')}）`)
+  audioTable[id] = `data:audio/mpeg;base64,${bytes.toString('base64')}`
+}
+clientSource = clientSource.replace(AUDIO_ANCHOR, () => JSON.stringify(audioTable))
 
 /* ---- require 白名单 ----
  * 浏览器半边原则上不做模块解析：`dsh.client.inject` 是空的，factory 的 require 只服务
@@ -109,8 +140,11 @@ const hasLiteral = (text) => wrapped.includes(`'${text}'`) || wrapped.includes(`
 const problems = []
 if (!wrapped.includes(`window.__ModuleLoader__.load({ id: ${JSON.stringify(PLUGIN_ID)}`)) problems.push('bundle id 与包名不一致')
 if (!wrapped.includes('return module.exports;')) problems.push('bundle 缺少 module.exports 返回')
-if (wrapped.includes(VERSION_ANCHOR) || wrapped.includes(PANEL_ANCHOR)) problems.push('锚点没被替换干净')
+if (wrapped.includes(VERSION_ANCHOR) || wrapped.includes(PANEL_ANCHOR) || wrapped.includes(AUDIO_ANCHOR)) problems.push('锚点没被替换干净')
 if (!wrapped.includes(`const VERSION = ${JSON.stringify(MANIFEST.version)}`)) problems.push('版本号没有注入（锚点替换失败）')
+for (const id of AUDIO_IDS) {
+  if (!wrapped.includes(`"${id}":"data:audio/mpeg;base64,`)) problems.push(`内置音色 ${id} 没有内联进 bundle`)
+}
 if (!hasLiteral('settings.section')) problems.push('设置页没有内联（panel 锚点替换失败）')
 if (!hasLiteral('shell.overlay')) problems.push('浮条 overlay 没有注册')
 if (!wrapped.includes('createToastStore')) problems.push('浮条存储没有进 bundle')

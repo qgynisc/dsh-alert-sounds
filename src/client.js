@@ -133,6 +133,16 @@ const PATTERNS = {
   tap:   { notes: [{ at: 0, f: 1046.5, d: 0.07, t: "triangle", g: 0.7 }, { at: 0.1, f: 1046.5, d: 0.07, t: "triangle", g: 0.7 }] },
   alarm: { notes: [{ at: 0, f: 880, d: 0.1, t: "square", g: 0.3 }, { at: 0.16, f: 1174.66, d: 0.12, t: "square", g: 0.3 }, { at: 0.34, f: 1567.98, d: 0.22, t: "square", g: 0.3 }] },
 };
+/* ---- 内置音色的**真实音频**（2026-10-06：用户反馈"这几个声音太单薄了"） ----
+ * 四个音色换成离线渲染好的 mp3（木质马林巴 / 电子 FM / 重低音，见 scripts/render-audio.mjs），
+ * 由 scripts/build.mjs 在 __AUDIO__ 锚点处内联成 base64 dataURL。
+ * **为什么内联而不是放包内文件**：DSH 桌面端是用 `__DSH_TRANSPORT__.loadBundle` 把客户端插件
+ * 当**源码文本**取进页面的，插件包里的兄弟文件（assets/*.mp3）没有可依赖的 URL。
+ * 内联后离线可用、也不受宿主怎么托管影响，代价是 bundle 大约 +70KB。
+ * PATTERNS 保留作**兜底**：解码失败（老浏览器 / 拿不到 AudioContext）时退回现场合成，绝不静音。 */
+const BUILTIN_AUDIO = /*__AUDIO__*/ null;
+const AUDIO_IDS = ["ding", "fault", "tap", "alarm"];
+const audioBuffers = {}; // id -> AudioBuffer（解码缓存）；"failed" 表示解码失败，走合成兜底
 // 浮条背景色；显示文字走 t( kind )。
 const TOAST_MAP = {
   approval: { bg: "#f59e0b" },
@@ -171,6 +181,8 @@ const I18N = {
     "diag.test": "测试一次完整提醒", "diag.test.hint": "走真实流程（受上面这些闸门影响）：点了没声音、没横幅，就说明是哪道闸门挡的",
     "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
+    /* 提醒声音组顶部说明：内置音色已经是打包好的真实音频（见 scripts/render-audio.mjs） */
+    "sound.builtin": "内置音色是打包在插件里的真实音频（木质马林巴 / 电子 FM / 重低音），离线可用；选“自定义”可上传自己的音频（≤2MB）。",
     /* 设置页顶部「标题 + 归属 + 项目地址」区块（qgynisc 所有插件统一形态） */
     "page.byline": "本项目由插件", "page.bylineTail": "实现", "page.repo": "项目地址", "page.version": "版本", "page.fork": "fork 自", "page.forkTail": "（MIT）",
   },
@@ -197,6 +209,8 @@ const I18N = {
     "diag.test": "Fire a real alert", "diag.test.hint": "runs the real path (all gates above apply); silence means a gate blocked it",
     "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",
+    /* hint at the top of the sound group: the built-in tones are real bundled audio */
+    "sound.builtin": "The built-in tones are real audio bundled with the plugin (wooden marimba / FM electronic / sub-bass) and work offline; pick “Custom” to upload your own (≤2MB).",
     "page.byline": "Implemented by the plugin", "page.bylineTail": "", "page.repo": "Repository", "page.version": "Version", "page.fork": "Forked from", "page.forkTail": " (MIT)",
   },
 };
@@ -279,16 +293,7 @@ function schedulePatternNow(pattern, done) {
     const base = ac.currentTime + 0.06; // 排程基准（留启动余量）
     const warmup = 0.2;                 // 静音预热：先喂一段音频把输出设备唤醒（0.3.13 修的“只播尾音”）
     master.gain.setValueAtTime(vol, base);
-    try {
-      const wg = ac.createGain();
-      wg.gain.value = 0;
-      const wo = ac.createOscillator();
-      wo.frequency.value = 440;
-      wo.connect(wg);
-      wg.connect(master);
-      wo.start(base);
-      wo.stop(base + warmup);
-    } catch (e) { /* ignore */ }
+    scheduleWarmup(ac, base, warmup);
     const start = base + warmup;
     for (const n of pattern.notes) {
       const osc = ac.createOscillator();
@@ -317,7 +322,110 @@ function schedulePatternNow(pattern, done) {
     later(() => { if (!fired) { fired = true; finish(); } }, 1200);
   }
 }
+/* ---- 只跑一次的包装（播放队列的 release 可能被 onended 与兜底定时器同时触发） ---- */
+function once(fn) {
+  let called = false;
+  return () => { if (called) return; called = true; if (fn) fn(); };
+}
+/* ---- 静音预热：先喂一段听不见的音频把输出设备唤醒 ----
+ * 上游 0.3.13 修的「久未出声时只播到尾音」对**音频文件**同样成立，所以两条播放路径共用。 */
+function scheduleWarmup(ac, base, seconds) {
+  try {
+    const wg = ac.createGain();
+    wg.gain.value = 0;
+    const wo = ac.createOscillator();
+    wo.frequency.value = 440;
+    wo.connect(wg);
+    wg.connect(master);
+    wo.start(base);
+    wo.stop(base + seconds);
+  } catch (e) { /* ignore */ }
+}
+/* ---- base64 dataURL → ArrayBuffer（decodeAudioData 要二进制） ---- */
+function dataUrlToArrayBuffer(dataUrl) {
+  const comma = dataUrl.indexOf(",");
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+/* ---- 解码内置音频并缓存（首次几毫秒；之后命中缓存）。拿不到能力就 resolve(null) → 走合成兜底。 ---- */
+function decodeBuiltin(id, ac) {
+  return new Promise((resolve) => {
+    const cached = audioBuffers[id];
+    if (cached && cached !== "failed") { resolve(cached); return; }
+    if (cached === "failed") { resolve(null); return; }
+    const url = BUILTIN_AUDIO && BUILTIN_AUDIO[id];
+    if (!url || typeof atob !== "function" || !ac || typeof ac.decodeAudioData !== "function") { resolve(null); return; }
+    let settled = false;
+    const ok = (buffer) => { if (settled) return; settled = true; audioBuffers[id] = buffer; resolve(buffer); };
+    const bad = () => { if (settled) return; settled = true; audioBuffers[id] = "failed"; resolve(null); };
+    try {
+      // decodeAudioData 有回调式与 Promise 式两种，这里都接（同一次调用只会生效一次）
+      const maybe = ac.decodeAudioData(dataUrlToArrayBuffer(url), ok, bad);
+      if (maybe && typeof maybe.then === "function") maybe.then(ok, bad);
+    } catch (e) { bad(); }
+  });
+}
+/* ---- 播放已解码的真实音频：与合成路径共用播放队列、master 音量（0–200%）与静音预热 ---- */
+function scheduleBufferNow(buffer, done) {
+  const finish = once(done);
+  const ac = ensureCtx();
+  if (!ac || !master) { finish(); return; }
+  let fired = false;
+  const schedule = () => {
+    if (fired) return;
+    fired = true;
+    if (!audioCtx || audioCtx !== ac || !master) { finish(); return; }
+    const vol = Math.min(2, Math.max(0, settings.volume));
+    const base = ac.currentTime + 0.06;
+    const warmup = 0.2;
+    master.gain.setValueAtTime(vol, base);
+    scheduleWarmup(ac, base, warmup);
+    try {
+      const src = ac.createBufferSource();
+      src.buffer = buffer;
+      src.connect(master);
+      src.onended = finish; // 播完立刻放行队列里的下一条
+      src.start(base + warmup);
+    } catch (e) { finish(); return; }
+    if (!later(finish, (warmup + buffer.duration) * 1000 + 250)) finish();
+  };
+  if (ac.state === "running") schedule();
+  else {
+    try { ac.resume().then(schedule, schedule); } catch (e) { schedule(); }
+    later(() => { if (!fired) { fired = true; finish(); } }, 1200);
+  }
+}
+/* ---- 内置音色：优先真实音频，能力缺失/解码失败时退回现场合成 ---- */
+function playBuiltin(id) {
+  enqueuePlay((release) => {
+    const done = once(release);
+    const fallback = () => {
+      const pattern = PATTERNS[id];
+      if (pattern) schedulePatternNow(pattern, done);
+      else done();
+    };
+    const ac = ensureCtx();
+    if (!ac) { fallback(); return; }
+    decodeBuiltin(id, ac).then((buffer) => {
+      if (buffer) scheduleBufferNow(buffer, done);
+      else fallback();
+    }, fallback);
+  });
+}
+/** 首次交互解锁音频后，后台把四段音频解码好，省掉第一条提醒的解码等待。 */
+function prefetchBuiltinAudio() {
+  if (!BUILTIN_AUDIO) return;
+  const ac = ensureCtx();
+  if (!ac) return;
+  for (const id of AUDIO_IDS) {
+    try { decodeBuiltin(id, ac).then(() => {}, () => {}); } catch (e) { /* ignore */ }
+  }
+}
 function playPattern(sound) {
+  if (BUILTIN_AUDIO && BUILTIN_AUDIO[sound]) { playBuiltin(sound); return; }
   const pattern = PATTERNS[sound];
   if (!pattern) return;
   enqueuePlay((release) => schedulePatternNow(pattern, release));
@@ -904,6 +1012,7 @@ function apply(ctx) {
     const unlock = () => {
       const ac = ensureCtx();
       if (ac && ac.state === "suspended") { try { ac.resume(); } catch (e) {} }
+      prefetchBuiltinAudio();
       try { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); } catch (e) {}
     };
     try { window.addEventListener("pointerdown", unlock); window.addEventListener("keydown", unlock); } catch (e) {}
@@ -968,6 +1077,12 @@ exports.__test = {
   TOAST_ARM_DELAY_MS,
   TOAST_MOVE_PX,
   PATTERNS,
+  AUDIO_IDS,
+  BUILTIN_AUDIO,
+  dataUrlToArrayBuffer,
+  decodeBuiltin,
+  playBuiltin,
+  playPattern,
   deepMerge,
   clip,
   inDnd,

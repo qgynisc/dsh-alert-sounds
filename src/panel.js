@@ -164,6 +164,7 @@ function SettingsPanel(props) {
 
     /* ===================== 提醒声音 ===================== */
     section("sec.sound"),
+    react.createElement("div", { style: hintStyle }, t("sound.builtin")),
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("volume")),
       react.createElement("input", { type: "range", min: "0", max: "2", step: "0.05", value: s.volume, onChange: e => commit(Object.assign({}, s, { volume: Number(e.target.value) })), style: { width: "160px" } }),

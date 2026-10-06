@@ -6,6 +6,18 @@
 > `0.3.x` 及更早的历史属于上游 [Machine-126/dsh-alert-sound](https://github.com/Machine-126/dsh-alert-sound/blob/main/CHANGELOG.md)
 > （检测、音色、语音兜底、音频预热那批修复都是它做的，本仓库原样继承）。
 
+## [未发布]
+
+### 变更
+- **四个内置音色从「浏览器现场合成」换成「离线渲染的真实音频」**（2026-10-06 用户：「这几个声音太单薄了，想换成 midi或者mp3的声音文件」）：
+  - 原来的音色是单个振荡器 + 指数衰减（`PATTERNS` 里 sine/sawtooth/triangle/square 各一），听起来薄。现在四个音色都是离线合成好、编码成 mp3 的音频：**叮咚**＝木质马林巴双音上行 + 轻钟琴泛音；**轻点**＝木质轻点两声上行；**警醒**＝电子 FM pluck 三音上行 + 乒乓延迟；**低沉**＝重低音双打击（厚锯齿 + 软饱和 + 噪声瞬态）。四段按 EBU R128 对齐到约 −17.5 LUFS，不会某一类特别吵。
+  - 生成流程见 `scripts/render-audio.mjs`（纯 Node 合成 → WAV → ffmpeg 编码 mp3），产物 `assets/audio/*.mp3` **入库**。
+  - 构建时由 `scripts/build.mjs` 把 mp3 **内联成 base64 dataURL** 打进 `lib/client.js`（bundle 73.9KB → 147.1KB）。为什么内联：DSH 桌面端是用 `__DSH_TRANSPORT__.loadBundle` 把客户端插件**当源码文本**取进页面的，插件包里的兄弟文件（`assets/*.mp3`）没有可依赖的 URL。
+  - 播放改走 `decodeAudioData` + `AudioBufferSourceNode`（解码结果缓存、首次交互后后台预解码），与合成路径共用播放队列、master 音量（0–200%）与 200ms 静音预热。
+  - **`PATTERNS` 现场合成保留为兜底**：拿不到 `AudioContext`、没有 `atob` 或解码失败时自动退回合成，绝不静音。
+  - 设置页「提醒声音」组顶部加一行说明；新增 8 项单测（内联音频与 `assets/audio/*.mp3` 逐字节一致、走 buffer 而非振荡器、解码失败退回合成、解码缓存）。
+  - **MIDI（.mid）不能直接播**（浏览器无内置 MIDI 合成器），要用 MIDI 音色就把它当源文件离线渲染成 mp3 再内联。用户自己的音频仍可用设置里的「自定义 → 上传」（≤2MB）。
+
 ## [1.0.0] — 首个版本
 
 从上游 `0.3.14` 派生，改动集中在这几处：

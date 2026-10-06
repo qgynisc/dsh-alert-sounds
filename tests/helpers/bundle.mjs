@@ -40,6 +40,7 @@ export function loadBundle(options = {}) {
     Date,
     Math,
     JSON,
+    atob,
     navigator: options.navigator,
     localStorage: options.localStorage,
     document: options.document,
