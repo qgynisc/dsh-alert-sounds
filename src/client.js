@@ -157,7 +157,8 @@ const I18N = {
     "dnd": "勿扰时段", "dnd.on": "开启", "dnd.to": "至",
     "preview": "试听", "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
-    "about": "本插件 fork 自", "version.label": "版本",
+    /* 设置页顶部「标题 + 归属 + 项目地址」区块（qgynisc 所有插件统一形态） */
+    "page.byline": "本项目由插件", "page.bylineTail": "实现", "page.repo": "项目地址", "page.version": "版本", "page.fork": "fork 自", "page.forkTail": "（MIT）",
   },
   en: {
     approval: "Needs approval", question: "Needs answer", done: "Output complete", failed: "Error", stalled: "Stalled", connected: "🔔 Alerts ready",
@@ -175,7 +176,7 @@ const I18N = {
     "dnd": "Do-not-disturb", "dnd.on": "On", "dnd.to": "to",
     "preview": "Preview", "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",
-    "about": "Forked from", "version.label": "Version",
+    "page.byline": "Implemented by the plugin", "page.bylineTail": "", "page.repo": "Repository", "page.version": "Version", "page.fork": "Forked from", "page.forkTail": " (MIT)",
   },
 };
 /** 纯函数：由「界面语言偏好 + 浏览器语言」定语言，便于单测。 */

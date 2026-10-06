@@ -30,6 +30,21 @@ const btnStyle = { padding: "3px 10px", borderRadius: "6px", fontSize: 12, curso
 const hintStyle = { fontSize: 12, opacity: 0.6 };
 const mutedStyle = { fontSize: 12, opacity: 0.7 };
 
+/* 设置页顶部「标题 + 归属 + 项目地址」区块。
+ * 形态与配色对齐 @qgynisc/dsh-inline-pastes 的设置页（qgynisc 所有插件统一成这样）：
+ *   标题 15px/600 → 次行 12px/18px 三次色 → 分隔线。
+ * 用 var(--dsw-alias-*) 取 DSH 自己的语义色，深浅主题下都不用另做适配。 */
+const headStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "4px",
+  paddingBottom: "8px",
+  borderBottom: "0.5px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.25))",
+};
+const headTitleStyle = { fontSize: "15px", fontWeight: 600 };
+const headSubStyle = { color: "var(--dsw-alias-label-tertiary, rgba(128,128,128,0.85))", fontSize: "12px", lineHeight: "18px" };
+const headLinkStyle = { color: "var(--dsw-alias-label-link, #2b5cd9)", textDecoration: "none" };
+
 /** 浮条统一挂在屏幕底部中间（与上游同位置，换实现不换位置）。 */
 const TOAST_BASE = {
   position: "fixed",
@@ -75,7 +90,21 @@ function SettingsPanel(props) {
     );
   });
   return react.createElement("div", { style: cardStyle },
-    react.createElement("div", { style: { fontWeight: 600, fontSize: 14 } }, t("settings.title")),
+    /* ---- 顶部：标题 + 归属 + 项目地址（本仓库约定，见 ~/.dsh/AGENTS.md）---- */
+    react.createElement("div", { style: headStyle },
+      react.createElement("div", { style: headTitleStyle }, t("settings.title")),
+      react.createElement("div", { style: headSubStyle },
+        t("page.byline") + " ",
+        react.createElement("a", { href: NPM_URL, target: "_blank", rel: "noreferrer", style: headLinkStyle }, name),
+        t("page.bylineTail") === "" ? null : " " + t("page.bylineTail"),
+        " · " + t("page.version") + " " + VERSION),
+      react.createElement("div", { style: headSubStyle },
+        t("page.repo") + t("sep"),
+        react.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: headLinkStyle }, REPO_URL)),
+      react.createElement("div", { style: headSubStyle },
+        t("page.fork") + " ",
+        react.createElement("a", { href: UPSTREAM_URL, target: "_blank", rel: "noreferrer", style: headLinkStyle }, "Machine-126/dsh-alert-sound"),
+        t("page.forkTail"))),
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("lang.label")),
       react.createElement("select", { value: s.lang || "auto", onChange: e => commit(Object.assign({}, s, { lang: e.target.value })), style: selStyle },
@@ -145,14 +174,7 @@ function SettingsPanel(props) {
       react.createElement("button", { style: btnStyle, onClick: () => { if (typeof window === "undefined" || typeof window.confirm !== "function" || window.confirm(t("reset.confirm"))) commit(deepMerge(DEFAULTS, {})); } }, t("reset")),
       react.createElement("span", { style: mutedStyle }, t("reset.hint"))),
     rows,
-    react.createElement("div", { style: hintStyle }, t("hint")),
-    react.createElement("div", { style: hintStyle },
-      t("version.label") + " " + VERSION + " · " + t("about") + " ",
-      react.createElement("a", { href: UPSTREAM_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } }, "Machine-126/dsh-alert-sound"),
-      " · ",
-      react.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } }, "本仓库"),
-      " · ",
-      react.createElement("a", { href: NPM_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } }, "npm"))
+    react.createElement("div", { style: hintStyle }, t("hint"))
   );
 }
 
