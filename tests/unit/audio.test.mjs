@@ -16,7 +16,7 @@ import { loadBundle } from '../helpers/bundle.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const { mod: baseMod } = loadBundle()
-const { AUDIO_IDS, BUILTIN_AUDIO, PATTERNS, dataUrlToArrayBuffer } = baseMod.__test
+const { AUDIO_IDS, BUILTIN_AUDIO, PATTERNS, PATTERN_ALIAS, SOUND_IDS, DEFAULT_TYPES, KINDS, getSettings, dataUrlToArrayBuffer } = baseMod.__test
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -58,8 +58,8 @@ function fakeAudioContext(calls, options = {}) {
   return FakeAudioContext
 }
 
-test('四个内置音色都内联成了 mp3 dataURL', () => {
-  assert.deepEqual([...AUDIO_IDS].sort(), ['alarm', 'ding', 'fault', 'tap'])
+test('五个内置音色都内联成了 mp3 dataURL', () => {
+  assert.deepEqual([...AUDIO_IDS].sort(), ['alarm', 'ding', 'fault', 'stall', 'tap'])
   for (const id of AUDIO_IDS) {
     const url = BUILTIN_AUDIO[id]
     assert.ok(typeof url === 'string', `${id} 没有内联音频`)
@@ -87,7 +87,61 @@ test('内联音频是合法 MP3（ID3 头或 MPEG 帧同步）', () => {
 })
 
 test('合成音型仍在（解码不可用时的兜底音色）', () => {
-  for (const id of AUDIO_IDS) assert.ok(PATTERNS[id] && PATTERNS[id].notes.length > 0, `兜底音型缺 ${id}`)
+  for (const id of AUDIO_IDS) {
+    const pattern = PATTERNS[PATTERN_ALIAS[id] || id]
+    assert.ok(pattern && pattern.notes.length > 0, `兜底音型缺 ${id}`)
+  }
+})
+
+test('每一类提醒的默认音色都对应一段真实音频（除了语音/自定义/静音）', () => {
+  for (const kind of KINDS) {
+    const sound = DEFAULT_TYPES[kind].sound
+    assert.ok(SOUND_IDS.includes(sound), `${kind} 的默认音色 ${sound} 不在 SOUND_IDS 里`)
+    if (sound !== 'voice' && sound !== 'custom' && sound !== 'none') {
+      assert.ok(BUILTIN_AUDIO[sound], `${kind} 默认用 ${sound}，但 bundle 里没有这段音频`)
+    }
+  }
+  assert.equal(DEFAULT_TYPES.stalled.sound, 'stall', '「卡住」应该有自己的音色，不再蹭出错的')
+})
+
+test('迁移：老设置里 stalled 用旧默认值 fault 时，自动换成新的 stall（只动一次）', () => {
+  const stored = {
+    volume: 0.9,
+    types: {
+      approval: { enabled: true, sound: 'alarm' },
+      question: { enabled: true, sound: 'tap' },
+      done: { enabled: true, sound: 'ding' },
+      failed: { enabled: true, sound: 'fault' },
+      stalled: { enabled: true, sound: 'fault' },
+    },
+  }
+  const written = []
+  const { mod } = loadBundle({
+    localStorage: {
+      getItem: (key) => (key === 'dsh-alert-sounds.v1' ? JSON.stringify(stored) : null),
+      setItem: (key, value) => written.push([key, value]),
+    },
+  })
+  assert.equal(mod.__test.getSettings().types.stalled.sound, 'stall')
+  assert.equal(mod.__test.getSettings().types.failed.sound, 'fault', '不该连带改掉出错那一类')
+  assert.equal(written.length, 1, '迁移结果应该写回一次 localStorage')
+})
+
+test('迁移不碰用户自己选过的音色', () => {
+  const stored = { types: { stalled: { enabled: true, sound: 'ding' } } }
+  const { mod } = loadBundle({
+    localStorage: { getItem: (k) => (k === 'dsh-alert-sounds.v1' ? JSON.stringify(stored) : null), setItem: () => { throw new Error('不该写回') } },
+  })
+  assert.equal(mod.__test.getSettings().types.stalled.sound, 'ding')
+})
+
+test('stall 在解码失败时借用 fault 的合成音型（不会哑掉）', async () => {
+  const calls = { buffers: 0, oscillators: 0 }
+  const { mod } = loadBundle({ windowExtra: { AudioContext: fakeAudioContext(calls, { failDecode: true }) } })
+  mod.__test.playPattern('stall')
+  await delay(80)
+  assert.equal(calls.buffers, 0)
+  assert.ok(calls.oscillators >= 1 + PATTERNS.fault.notes.length, `stall 兜底没响（振荡器 ${calls.oscillators} 个）`)
 })
 
 test('播放内置音色走 AudioBuffer，而不是现场合成', async () => {

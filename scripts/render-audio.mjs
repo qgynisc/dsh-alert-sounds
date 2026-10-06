@@ -11,25 +11,46 @@
  *   tap   需要回答 —— 木质轻点（木琴/木鱼）两声上行，短促
  *   alarm 需要审批 —— 电子 FM pluck 三音上行 + 乒乓延迟，清亮有存在感
  *   fault 发生错误 —— 重低音双打击（厚锯齿 + 软饱和 + 噪声瞬态），压低、有压迫感
- *   （第 5 类「卡住」默认复用 fault，与上游一致；用户可在设置里改。）
+ *   （卡住 stall 没有独立音型，播放时借用 fault 的合成音型兜底。）
+ *
+ * ⚠️ 2026-10-06 起，**内置音色用的是用户提供的素材**（`scripts/import-audio.mjs` 导入，
+ * 见 assets/audio/ 与 README「音色」）。本脚本保留为"手上没有素材时"的备用合成方案：
+ * 它默认**不会覆盖**已存在的 assets/audio/*.mp3（要覆盖得显式加 --force），
+ * 也可以用 `--out <目录>` 输出到别处再看。
  *
  * 依赖：Node ≥ 20（合成）+ ffmpeg（编码 mp3）。生成物 `assets/audio/*.mp3` **要入库**：
  * build 与 CI 全靠它们复现同一份 lib/client.js（CI 会重跑 build 并 diff lib/）。
  *
  * 用法：
- *   node scripts/render-audio.mjs             # 渲染并编码到 assets/audio/
+ *   node scripts/render-audio.mjs             # 渲染并编码到 assets/audio/（已有文件则拒绝）
+ *   node scripts/render-audio.mjs --force     # 覆盖现有 assets/audio/*.mp3
+ *   node scripts/render-audio.mjs --out /tmp/x # 输出到别的目录
  *   node scripts/render-audio.mjs --keep-wav  # 同时保留中间 WAV（调试用）
  */
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const OUT_DIR = join(ROOT, 'assets', 'audio')
 const SR = 44100
 const KEEP_WAV = process.argv.includes('--keep-wav')
+const FORCE = process.argv.includes('--force')
+const outIndex = process.argv.indexOf('--out')
+/** 输出目录：默认 assets/audio/（内置音色所在处），可用 --out 换地方。 */
+const OUT_DIR = outIndex >= 0 && process.argv[outIndex + 1] ? process.argv[outIndex + 1] : join(ROOT, 'assets', 'audio')
+
+/* 安全闸：assets/audio/ 里的 mp3 现在可能是**导入的素材**（scripts/import-audio.mjs），
+ * 本脚本一跑就会把它们覆盖成合成音色。所以已有文件时默认拒绝，必须显式 --force。 */
+if (!FORCE) {
+  const existing = Object.keys({ ding: 1, tap: 1, alarm: 1, fault: 1 }).filter((id) => existsSync(join(OUT_DIR, `${id}.mp3`)))
+  if (existing.length > 0) {
+    console.error(`拒绝覆盖：${OUT_DIR} 里已有 ${existing.join('、')}.mp3（可能是导入的素材）。`)
+    console.error('确实要用合成音色覆盖，加 --force；只想看看效果，用 --out <目录>。')
+    process.exit(1)
+  }
+}
 
 /* ============================ 基础工具 ============================ */
 

@@ -26,7 +26,7 @@ The **On-screen banners** group under Settings → **Alerts**: all five kinds (a
 |---|---|---|
 | **Banner dwell** | Fixed 3.6s auto-dismiss, and the toast was **off by default** (so you never saw it) | New **Toast style** setting, two **independent implementations**:<br>**① Built-in persistent card (default)** — stays until the pointer moves noticeably (≥8px) or you click; shows the completion time `HH:MM` and an `×`.<br>**② Original** — upstream's bottom-centre coloured bar with the 3.6s auto-dismiss. |
 | Names / ids | `@machine-126/dsh-alert-sound`, slot id `dsh-alert`, keys `dsh-alert-sound.v1` | All renamed; the two plugins never share settings. |
-| Structure | One hand-written 821-line `lib/client.js` | `src/client.js` (engine) + `src/panel.js` (UI) + `scripts/build.mjs` → `lib/`; 85 unit tests + install self-check |
+| Structure | One hand-written 821-line `lib/client.js` | `src/client.js` (engine) + `src/panel.js` (UI) + `scripts/build.mjs` → `lib/`; 89 unit tests + install self-check |
 | Upstream tracking | — | `npm run check:upstream` diffs upstream against the `vendor/` snapshot and names, per hunk, which function it belongs to and which file here to edit |
 | React | top-level `require('react')` | failure-tolerant: without React the settings page is skipped, **sounds and detection keep working** |
 
@@ -34,28 +34,31 @@ Everything else (five kinds, tones, voice with fallback, repeats, DND, stall det
 
 ## Sounds
 
-The four built-in tones are **real, offline-rendered audio** (not a single browser-synthesised oscillator — swapped on 2026-10-06 after feedback that “these sounds are too thin”), inlined into `lib/client.js` at build time so they work offline without relying on the host serving static files:
+The five built-in tones are **real audio files** (not a single browser-synthesised oscillator — swapped twice on 2026-10-06), inlined into `lib/client.js` so they work offline without relying on the host serving static files. The source files live in `assets/audio/` and can be re-imported from any folder with `scripts/import-audio.mjs`: it matches files by the kind keyword in their name (approval / answer / complete / error / stalled), trims leading and trailing silence, matches loudness to −17.5 LUFS and re-encodes.
 
-| Label | Used for | Timbre | Length |
+| Label | Used for | Source file | Length |
 |---|---|---|---|
-| Ding-dong | Output complete | Wooden marimba, two notes up (C5→G5) + light bell shimmer | 1.1s |
-| Tap | Needs answer | Two short wooden taps up (B5→E6) | 0.6s |
-| Alert | Needs approval | FM electronic pluck, three notes up + ping-pong delay | 1.2s |
-| Low | Error / stalled | Two heavy sub-bass hits (thick saw + soft saturation + noise transient) | 1.3s |
+| Ding-dong | Output complete | `03-输出完成-提示音.wav` | 1.23s |
+| Tap | Needs answer | `02-需要回答-提示音.wav` | 0.33s |
+| Alert | Needs approval | `01-需要审批-提示音.wav` | 1.27s |
+| Low | Error | `04-发生错误-提示音.wav` | 1.14s |
+| Stalled | Stalled (5th kind, fork-only) | `05-卡住-提示音.wav` | 1.20s |
 
-All four are loudness-matched with EBU R128 (≈ −17.5 LUFS), so no single kind is dramatically louder than the others.
+All five are loudness-matched to −17.5 LUFS. (One cue is only 0.33s long, and EBU R128's 400ms gate throws away anything that short — hence the importer does a first pass with a high-pass + gated-RMS metric and a second pass against integrated loudness.)
 
-Two ways to use your own sounds:
+Three ways to use your own sounds:
 
 1. **Settings → pick “Custom” → upload** (any mp3/wav/m4a/ogg, ≤2MB, stored in localStorage): no code changes, takes effect immediately;
-2. **Replace a built-in tone**: drop your file into `assets/audio/` (or edit `scripts/render-audio.mjs` and re-render), run `npm run build`, and commit both — the audio is inlined into `lib/client.js`.
+2. **Replace the whole set**: put your files in one folder (name them with the kind keyword — prefix/suffix do not matter), then run `node scripts/import-audio.mjs "<folder>"` → `npm run build`, and commit `assets/audio/*.mp3` together with `lib/`;
+3. **Replace a single cue**: convert your file to mp3 as `assets/audio/<id>.mp3` (ids in the table above) and run `npm run build`.
 
-> Why inline as base64 instead of fetching a sibling mp3 at runtime: the DSH desktop app pulls client plugins through `__DSH_TRANSPORT__.loadBundle` **as source text**, so files next to the bundle have **no dependable URL**. The cost is roughly +70KB of bundle size.
-> **MIDI (`.mid`) cannot be played directly**: browsers ship no MIDI synthesiser. Treat MIDI as a source format — render it to mp3 offline and inline it (`scripts/render-audio.mjs` is exactly that pipeline).
+> Why inline as base64 instead of fetching a sibling mp3 at runtime: the DSH desktop app pulls client plugins through `__DSH_TRANSPORT__.loadBundle` **as source text**, so files next to the bundle have **no dependable URL**. The cost is roughly +75KB of bundle size.
+> **MIDI (`.mid`) cannot be played directly**: browsers ship no MIDI synthesiser. Treat MIDI as a source format — render it to mp3 offline and inline it.
+> If you have no source material at all, `scripts/render-audio.mjs` can still synthesise a fallback set (it refuses to overwrite existing `assets/audio/*.mp3` unless you pass `--force`).
 
 ## Features
 
-- **Five kinds, distinct real-audio tones** — needs approval / needs answer / output complete / error, plus an experimental **Stalled** kind (off by default).
+- **Five kinds, distinct real-audio tones** (each kind ships its own bundled cue) — needs approval / needs answer / output complete / error, plus an experimental **Stalled** kind (off by default).
 - **The completion banner waits for you** — by default it sits at the bottom centre until you move the pointer or click, and tells you *when* it happened.
 - **Switch toast style anytime** — go back to upstream's 3.6s bar when you want quiet, or keep the persistent card when you don't want to miss a completion.
 - **Optional voice (zh/en)** — set a kind to **Voice** to hear it spoken; if speech synthesis fails to start, that kind's tone is played instead, so **an alert is never silent**.
@@ -85,7 +88,7 @@ Restart `dsh web` (or reload the page), then open **Settings → Alerts**.
 
 ## Settings
 
-Interface language (auto/zh/en) · master volume (0–200%) · scope (all sessions / current only) · repeat interval (off/10/20/30s) · system notification · read-aloud · stall detection (off/1/2/5 min, experimental) · **toast on/off** · **toast style (built-in persistent card / original 3.6s bar)** · voice rate · do-not-disturb window · per-kind enable + sound (ding-dong = wooden marimba / tap / alert = FM electronic / low = sub-bass / voice / custom / mute) + preview, with custom audio upload (≤2MB) · restore defaults (with confirmation).
+Interface language (auto/zh/en) · master volume (0–200%) · scope (all sessions / current only) · repeat interval (off/10/20/30s) · system notification · read-aloud · stall detection (off/1/2/5 min, experimental) · **toast on/off** · **toast style (built-in persistent card / original 3.6s bar)** · voice rate · do-not-disturb window · per-kind enable + sound (ding-dong / tap / alert / low / stalled / voice / custom / mute) + preview, with custom audio upload (≤2MB) · restore defaults (with confirmation).
 
 Preferences live in `localStorage` under `dsh-alert-sounds.v1` (settings) and `dsh-alert-sounds.custom.v1` (custom sounds) — different keys from upstream, so the two plugins don't touch each other's settings.
 
@@ -100,9 +103,10 @@ All processing stays in the browser. The plugin makes **no network requests**, s
 ├─ cordis.patch.yml        # composition patch: one inserted row (id=alert-sounds, name=package)
 ├─ src/{client,panel,host}.js
 ├─ scripts/                # build.mjs / rename / sync-upstream / install / verify-install
-│  └─ render-audio.mjs     # offline-renders the four built-in tones → assets/audio/*.mp3 (needs ffmpeg)
+│  ├─ import-audio.mjs     # imports external material as the built-in tones (match/trim/loudness → assets/audio/*.mp3)
+│  └─ render-audio.mjs     # fallback: synthesise a tone set when you have no material (refuses to overwrite by default)
 ├─ assets/audio/           # the four built-in tones as mp3 — committed, inlined into lib/client.js by the build
-├─ tests/                  # 85 unit tests, run against the built lib/ artifacts
+├─ tests/                  # 89 unit tests, run against the built lib/ artifacts
 ├─ vendor/upstream/        # byte-exact upstream snapshot (for diffing when tracking upstream)
 └─ lib/                    # build output, committed on purpose (git installs do not build)
 ```
@@ -112,7 +116,7 @@ npm run build            # after editing src/, rebuild and commit lib/
 npm test                 # build + unit tests + install self-check
 npm run check:upstream   # is upstream ahead? prints a hunk-by-hunk porting guide
 npm run rename           # idempotent rename (run after porting upstream code)
-node scripts/render-audio.mjs   # re-render the built-in tones (needs ffmpeg; commit the output)
+node scripts/import-audio.mjs "<folder>"   # replace the built-in tones (needs ffmpeg; commit assets + lib)
 ```
 
 ## Tracking upstream

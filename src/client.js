@@ -46,7 +46,7 @@ const DEFAULT_TYPES = {
   question: { enabled: true, sound: "tap" },
   done: { enabled: true, sound: "ding" },
   failed: { enabled: true, sound: "fault" },
-  stalled: { enabled: true, sound: "fault" },
+  stalled: { enabled: true, sound: "stall" },
 };
 /**
  * 默认设置。相对上游的三处改动：
@@ -85,13 +85,24 @@ function deepMerge(base, over) {
 }
 
 let settings = deepMerge(DEFAULTS, {});
+let hasStoredSettings = false;
 try {
   const raw = localStorage.getItem(STORE_KEY);
   if (raw) {
     const p = JSON.parse(raw);
-    if (p && typeof p === "object") settings = deepMerge(DEFAULTS, p);
+    if (p && typeof p === "object") { settings = deepMerge(DEFAULTS, p); hasStoredSettings = true; }
   }
 } catch (e) { /* ignore */ }
+
+/* ---- 迁移：音频集 v2（2026-10-06 换成素材音频） ----
+ * 「卡住」原来没有自己的音色，默认复用出错的 fault。现在第五个音色 stall 到位了，而老设置里
+ * 存的是**旧默认值** fault —— 不迁移的话，那个音永远轮不到播。只在「存过设置 + 值正好是旧默认值
+ * + 还没标记过 v2」时动一次；你自己特意选过别的音色（比如 ding）就不碰。 */
+if (hasStoredSettings && settings.audioPack !== 2 && settings.types && settings.types.stalled && settings.types.stalled.sound === "fault") {
+  settings.types.stalled.sound = "stall";
+  settings.audioPack = 2;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
+}
 
 const settingsSubs = new Set();
 function notifySettings() {
@@ -126,7 +137,7 @@ function persistCustomAudio() {
 /* ===========================================================================
  * 2. 音色与语音
  * ========================================================================= */
-const SOUND_IDS = ["ding", "fault", "tap", "alarm", "voice", "custom", "none"];
+const SOUND_IDS = ["ding", "fault", "tap", "alarm", "stall", "voice", "custom", "none"];
 const PATTERNS = {
   ding:  { notes: [{ at: 0, f: 523.25, d: 0.18, t: "sine", g: 0.8 }, { at: 0.15, f: 783.99, d: 0.35, t: "sine", g: 0.8 }] },
   fault: { notes: [{ at: 0, f: 196, d: 0.2, t: "sawtooth", g: 0.35 }, { at: 0.18, f: 130.81, d: 0.4, t: "sawtooth", g: 0.35 }] },
@@ -141,7 +152,7 @@ const PATTERNS = {
  * 内联后离线可用、也不受宿主怎么托管影响，代价是 bundle 大约 +70KB。
  * PATTERNS 保留作**兜底**：解码失败（老浏览器 / 拿不到 AudioContext）时退回现场合成，绝不静音。 */
 const BUILTIN_AUDIO = /*__AUDIO__*/ null;
-const AUDIO_IDS = ["ding", "fault", "tap", "alarm"];
+const AUDIO_IDS = ["ding", "fault", "tap", "alarm", "stall"];
 const audioBuffers = {}; // id -> AudioBuffer（解码缓存）；"failed" 表示解码失败，走合成兜底
 // 浮条背景色；显示文字走 t( kind )。
 const TOAST_MAP = {
@@ -155,12 +166,14 @@ const TOAST_MAP = {
 const KINDS = ["approval", "question", "done", "failed", "stalled"];
 // 语音朗读失败（浏览器 TTS 丢 utterance）时，用哪一声提示音兜底——保证一定有声。
 const VOICE_FALLBACK = { approval: "alarm", question: "tap", done: "ding", failed: "fault", stalled: "fault" };
+/** 兜底合成音型：stall 没有独立的 PATTERNS，借用 fault 的（音频解码失败时的最后一道保险）。 */
+const PATTERN_ALIAS = { stall: "fault" };
 
 /* ---- i18n: zh/en 词典 + t() ---- */
 const I18N = {
   zh: {
     approval: "需要审批", question: "需要回答", done: "输出完成", failed: "发生错误", stalled: "卡住", connected: "🔔 提醒已连接",
-    "sound.ding": "叮咚", "sound.fault": "低沉", "sound.tap": "轻点", "sound.alarm": "警醒", "sound.voice": "语音", "sound.custom": "自定义", "sound.none": "静音",
+    "sound.ding": "叮咚", "sound.fault": "低沉", "sound.tap": "轻点", "sound.alarm": "警醒", "sound.stall": "卡住", "sound.voice": "语音", "sound.custom": "自定义", "sound.none": "静音",
     "lang.label": "界面语言", "lang.auto": "自动", "lang.zh": "中文", "lang.en": "English",
     "settings.title": "🔔 提醒音设置", "nav.title": "提醒音", "overlay.label": "DSH 提醒", "volume": "音量", "scope": "提醒范围", "scope.all": "所有会话", "scope.current": "仅当前会话",
     "repeat": "重复提醒", "repeat.off": "关", "repeat.10": "每10秒", "repeat.20": "每20秒", "repeat.30": "每30秒",
@@ -182,13 +195,13 @@ const I18N = {
     "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
     /* 提醒声音组顶部说明：内置音色已经是打包好的真实音频（见 scripts/render-audio.mjs） */
-    "sound.builtin": "内置音色是打包在插件里的真实音频（木质马林巴 / 电子 FM / 重低音），离线可用；选“自定义”可上传自己的音频（≤2MB）。",
+    "sound.builtin": "内置音色是打包在插件里的真实音频（五类提醒各自一条，离线可用）；选“自定义”可上传自己的音频（≤2MB）。",
     /* 设置页顶部「标题 + 归属 + 项目地址」区块（qgynisc 所有插件统一形态） */
     "page.byline": "本项目由插件", "page.bylineTail": "实现", "page.repo": "项目地址", "page.version": "版本", "page.fork": "fork 自", "page.forkTail": "（MIT）",
   },
   en: {
     approval: "Needs approval", question: "Needs answer", done: "Output complete", failed: "Error", stalled: "Stalled", connected: "🔔 Alerts ready",
-    "sound.ding": "Ding-dong", "sound.fault": "Low", "sound.tap": "Tap", "sound.alarm": "Alert", "sound.voice": "Voice", "sound.custom": "Custom", "sound.none": "Mute",
+    "sound.ding": "Ding-dong", "sound.fault": "Low", "sound.tap": "Tap", "sound.alarm": "Alert", "sound.stall": "Stalled", "sound.voice": "Voice", "sound.custom": "Custom", "sound.none": "Mute",
     "lang.label": "Language", "lang.auto": "Auto", "lang.zh": "中文", "lang.en": "English",
     "settings.title": "🔔 Alert sounds", "nav.title": "Alerts", "overlay.label": "DSH Alerts", "volume": "Volume", "scope": "Scope", "scope.all": "All sessions", "scope.current": "Current session only",
     "repeat": "Repeat", "repeat.off": "Off", "repeat.10": "Every 10s", "repeat.20": "Every 20s", "repeat.30": "Every 30s",
@@ -210,7 +223,7 @@ const I18N = {
     "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",
     /* hint at the top of the sound group: the built-in tones are real bundled audio */
-    "sound.builtin": "The built-in tones are real audio bundled with the plugin (wooden marimba / FM electronic / sub-bass) and work offline; pick “Custom” to upload your own (≤2MB).",
+    "sound.builtin": "The built-in tones are real audio bundled with the plugin (one cue per kind, offline-ready); pick “Custom” to upload your own (≤2MB).",
     "page.byline": "Implemented by the plugin", "page.bylineTail": "", "page.repo": "Repository", "page.version": "Version", "page.fork": "Forked from", "page.forkTail": " (MIT)",
   },
 };
@@ -403,7 +416,7 @@ function playBuiltin(id) {
   enqueuePlay((release) => {
     const done = once(release);
     const fallback = () => {
-      const pattern = PATTERNS[id];
+      const pattern = PATTERNS[PATTERN_ALIAS[id] || id];
       if (pattern) schedulePatternNow(pattern, done);
       else done();
     };
@@ -1065,6 +1078,8 @@ exports.inject = inject;
 exports.name = name;
 /** 单测入口：暴露纯函数与浮条存储，便于在 Node 里直接跑决策路径（不影响 DSH 加载）。 */
 exports.__test = {
+  /** 当前生效的设置（含迁移后的结果）——给单测读，不参与 DSH 加载。 */
+  getSettings: () => settings,
   DEFAULTS,
   DEFAULT_TYPES,
   I18N,
@@ -1077,6 +1092,7 @@ exports.__test = {
   TOAST_ARM_DELAY_MS,
   TOAST_MOVE_PX,
   PATTERNS,
+  PATTERN_ALIAS,
   AUDIO_IDS,
   BUILTIN_AUDIO,
   dataUrlToArrayBuffer,

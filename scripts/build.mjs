@@ -26,8 +26,9 @@ const PLUGIN_ID = MANIFEST.name
 const VERSION_ANCHOR = "/*__VERSION__*/ '0.0.0'"
 const PANEL_ANCHOR = "/*__PANEL__*/ ''"
 const AUDIO_ANCHOR = "/*__AUDIO__*/ null"
-/** 内置音色对应的音频文件（assets/audio/<id>.mp3；由 scripts/render-audio.mjs 生成并入库）。 */
-const AUDIO_IDS = ['ding', 'fault', 'tap', 'alarm']
+/** 内置音色对应的音频文件（assets/audio/<id>.mp3；由 scripts/import-audio.mjs 导入素材，
+ *  或由 scripts/render-audio.mjs 生成合成音色，两者产物都要入库）。 */
+const AUDIO_IDS = ['ding', 'fault', 'tap', 'alarm', 'stall']
 
 /** 读一个源文件，缺失直接报错（不静默产出半个产物）。 */
 function readSource(relative) {

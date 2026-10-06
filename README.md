@@ -28,7 +28,7 @@
 | **自研浮条的观感** | — | 底色用**类别的原色**（完成 = 原来的绿色 `#16a34a`，不是抢不抢眼的深色黑卡片），整体**放大 5 倍**（「一走一过也要看得见」），**只留文字**（无左侧圆点、无右侧 ×），**两行永不断行**（底色与文字同一个倍数同比放大、不设宽度上限，5×/8× 也不会折成三行）；设置里「提示大小」可 1×–8× 随时调；浮条 portal 到 `<body>`，**永远在最前面**（不会被设置弹窗盖住） |
 | **设置页顶部** | 只有标题 | 标题 + `本项目由插件 <包名> 实现 · 版本 <版本>` + `项目地址：<仓库>` + fork 来源（与 `@qgynisc/dsh-inline-pastes` 同形态；包名与版本由构建注入） |
 | 包名 / 标识 | `@machine-126/dsh-alert-sound`、slot id `dsh-alert`、键 `dsh-alert-sound.v1` | 全部换成本仓库自己的名字，**两套设置互不干扰** |
-| 结构 | 单文件 `lib/client.js`（821 行手写 bundle） | `src/client.js` + `src/panel.js`（引擎/界面分开）+ `scripts/build.mjs` 生成 `lib/`；附 85 项单测与安装自检 |
+| 结构 | 单文件 `lib/client.js`（821 行手写 bundle） | `src/client.js` + `src/panel.js`（引擎/界面分开）+ `scripts/build.mjs` 生成 `lib/`；附 89 项单测与安装自检 |
 | 跟上游 | — | `npm run check:upstream` 把上游新版与 `vendor/` 快照逐行比对，并指名每个 hunk 属于哪个函数、在本仓库该改哪个文件 |
 | React 依赖 | 顶层直接 `require('react')` | 改成可失败获取：拿不到 React 时设置页整块跳过，**声音与检测照常工作** |
 
@@ -36,24 +36,28 @@
 
 ## 音色
 
-四个内置音色是**离线渲染好的音频**（不是浏览器现场合成的单振荡器——2026-10-06 用户反馈「这几个声音太单薄了」后换掉），构建时内联进 `lib/client.js`，离线可用、不依赖宿主的静态资源托管：
+五个内置音色是**真实音频文件**（不是浏览器现场合成的单振荡器——2026-10-06 先后换过两轮），随插件内联进 `lib/client.js`，离线可用、不依赖宿主的静态资源托管。素材放在 `assets/audio/`，可以用 `scripts/import-audio.mjs` 从任意素材目录重新导入：按文件名里的类别关键字（审批/回答/完成/错误/卡住）自动匹配、裁掉首尾静音、统一响度到 −17.5 LUFS 再编码。
 
-| 设置里叫 | 用在 | 音色 | 时长 |
+| 设置里叫 | 用在 | 素材 | 时长 |
 |---|---|---|---|
-| 叮咚 | 输出完成 | 木质马林巴双音上行（C5→G5）+ 轻钟琴泛音 | 1.1s |
-| 轻点 | 需要回答 | 木质轻点两声上行（B5→E6） | 0.6s |
-| 警醒 | 需要审批 | 电子 FM pluck 三音上行 + 乒乓延迟 | 1.2s |
-| 低沉 | 发生错误 / 卡住 | 重低音双打击（厚锯齿 + 软饱和 + 噪声瞬态） | 1.3s |
+| 叮咚 | 输出完成 | `03-输出完成-提示音.wav` | 1.23s |
+| 轻点 | 需要回答 | `02-需要回答-提示音.wav` | 0.33s |
+| 警醒 | 需要审批 | `01-需要审批-提示音.wav` | 1.27s |
+| 低沉 | 发生错误 | `04-发生错误-提示音.wav` | 1.14s |
+| 卡住 | 卡住（第五类，本 fork 独有） | `05-卡住-提示音.wav` | 1.20s |
 
-四段响度按 EBU R128 对齐（都是 −17.5 LUFS 上下），不会出现「某一类特别吵」。
+五段响度对齐到 −17.5 LUFS（素材里有 0.33s 的短音，EBU R128 的 400ms 门限会整段滤掉，所以导入脚本用「高通 + 门限 RMS」做第一遍、再用积分响度做第二遍校正），不会出现「某一类特别吵」。
 
-想换成自己的声音，两条路：
+想换成自己的声音，三条路：
 
 1. **设置里选「自定义」→ 上传**（任意 mp3/wav/m4a/ogg，≤2MB，存 localStorage）：零改动、立刻生效；
-2. **改内置音色**：把你的文件放进 `assets/audio/`（或改 `scripts/render-audio.mjs` 重新渲染），跑 `npm run build`——音频会被内联进 `lib/client.js`，记得把两者一起提交。
+2. **整批换内置音色**：把素材放一个目录（文件名带上 审批/回答/完成/错误/卡住 即可，前后缀随便写），跑
+   `node scripts/import-audio.mjs "<素材目录>"` → `npm run build`，把 `assets/audio/*.mp3` 与 `lib/` 一起提交；
+3. **只换某一个**：把你的文件转成 mp3 放到 `assets/audio/<id>.mp3`（id 见上表），再 `npm run build`。
 
-> 为什么内联成 base64 而不是运行时读同目录的 mp3：DSH 桌面端是通过 `__DSH_TRANSPORT__.loadBundle` 把客户端插件**当源码文本**取进页面的，插件包里的兄弟文件**没有可依赖的 URL**。代价是 bundle 大约 +70KB。
-> **MIDI（.mid）不能直接播**：浏览器没有内置 MIDI 合成器。要用 MIDI 音色就把它当源文件，离线渲染成 mp3 再内联（`scripts/render-audio.mjs` 就是干这个的）。
+> 为什么内联成 base64 而不是运行时读同目录的 mp3：DSH 桌面端是通过 `__DSH_TRANSPORT__.loadBundle` 把客户端插件**当源码文本**取进页面的，插件包里的兄弟文件**没有可依赖的 URL**。代价是 bundle 大约 +75KB。
+> **MIDI（.mid）不能直接播**：浏览器没有内置 MIDI 合成器。要用 MIDI 音色就把它当源文件，离线渲染成 mp3 再内联。
+> 手上没有素材时，`scripts/render-audio.mjs` 还能合成一套备用的（默认拒绝覆盖已有 `assets/audio/*.mp3`，要覆盖加 `--force`）。
 
 ## 功能
 
@@ -120,7 +124,7 @@ npm run install:desktop     # 等价于 node scripts/install.mjs --profile deskt
 | 勿扰时段 | 起止小时 |
 | **各类提醒预览** | 「屏幕提示」组里列出五类提醒的静态预览条（**1× 示意**，与真身**共用同一个组件**，样式不会漂移）；每类右边的 **「预览」** 按钮会按当前「提示大小」**真弹一条**并同时试听声音 |
 | **真实效果预览** | 「**弹一条 / 看大小**」按当前「提示样式 / 提示大小」弹一条真身；**改样式或大小会自动弹一条**给你看；预览点一下即关、15 秒兜底，且不受「悬浮提示」总开关影响；横幅挂在 `<body>` 上，**不会被设置弹窗盖住** |
-| 每类提醒 | 启用开关 + 音色（叮咚 = 木质马林巴 / 轻点 / 警醒 = 电子 / 低沉 = 重低音 / 语音 / 自定义 / 静音）+ **预览**；选“自定义”可上传自己的音频（≤2MB） |
+| 每类提醒 | 启用开关 + 音色（叮咚 / 轻点 / 警醒 / 低沉 / 卡住 / 语音 / 自定义 / 静音）+ **预览**；五类都有各自对应的真实音频（见上「音色」），选“自定义”可上传自己的音频（≤2MB） |
 | 恢复默认设置 | 带二次确认（已上传的自定义音色保留） |
 
 偏好存在 `localStorage`：`dsh-alert-sounds.v1`（设置）、`dsh-alert-sounds.custom.v1`（自定义音色）。**与上游的键不同**，所以两个插件不会互相改设置。
@@ -140,13 +144,14 @@ npm run install:desktop     # 等价于 node scripts/install.mjs --profile deskt
 │  └─ host.js              # 宿主半边（占位）
 ├─ scripts/
 │  ├─ build.mjs            # 生成 lib/index.js 与 lib/client.js（loader id 取自包名；内联 panel 与音频）
-│  ├─ render-audio.mjs     # 离线渲染四个内置音色 → assets/audio/*.mp3（换音色时才跑，需 ffmpeg）
+│  ├─ import-audio.mjs     # 把外部素材导入成内置音色（匹配类别/裁静音/对齐响度 → assets/audio/*.mp3）
+│  ├─ render-audio.mjs     # 备用：没有素材时合成一套音色（默认拒绝覆盖已有文件）
 │  ├─ rename.mjs           # 幂等改名（跟上游搬运后用）
 │  ├─ sync-upstream.mjs    # 上游差异 → hunk 级搬运指引（npm run check:upstream）
 │  ├─ install.mjs          # 装进 profile（默认顺手移除上游）
 │  └─ verify-install.mjs   # 加载器解析链自检（支持 --simulate 在 CI 跑）
 ├─ assets/audio/           # 四个内置音色的 mp3：**必须入库**（构建时内联进 lib/client.js）
-├─ tests/                  # 85 项单测：测的是 lib/ 里的构建产物
+├─ tests/                  # 89 项单测：测的是 lib/ 里的构建产物
 ├─ vendor/upstream/        # 上游逐字节快照（跟上游时做差异比对）
 └─ lib/                    # 构建产物，**必须入库**（git 安装不跑构建）
 ```
@@ -159,7 +164,7 @@ npm test                 # 构建 + 单测 + 安装自检
 npm run test:ci          # CI 用（不含需要真 profile 的检查）
 npm run rename           # 幂等改名（上游搬运后跑）
 npm run check:upstream   # 上游有更新吗？有则打印搬运指引
-node scripts/render-audio.mjs   # 重新生成内置音色（需 ffmpeg；生成物要提交）
+node scripts/import-audio.mjs "<素材目录>"   # 换内置音色（需 ffmpeg；生成物与 lib/ 都要提交）
 ```
 
 ## 跟上上游
