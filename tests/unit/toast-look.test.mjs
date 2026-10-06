@@ -247,3 +247,48 @@ test('自动预览：改「提示大小」会立刻弹一条真身（直接看�
   scaleSelects[0].props.onChange({ target: { value: '8' } })
   assert.equal(getCurrent(), 'done', '改大小后应立刻弹一条真身')
 })
+
+test('浮条必须 portal 到 <body>：否则会被设置弹窗盖住（shell.overlay 容器只到 z-index 20）', () => {
+  const fakeBody = { tag: 'body' }
+  const shim = createReactShim()
+  const { ctx, registered } = createFakeCtx({ services: {} })
+  const loaded = loadBundle({
+    require: () => shim,
+    document: { body: fakeBody },
+    localStorage: storageWith({ lang: 'zh' }),
+  })
+  loaded.mod.apply(ctx)
+  const overlay = registered['shell.overlay'][0].component()
+  const element = overlay.type(Object.assign({}, overlay.props, {
+    getCurrent: () => 'done',
+    getCurrentAt: () => Date.parse('2026-10-06T14:32:00'),
+    isPreview: () => true,
+  }))
+  assert.ok(element, '应当渲染出浮条')
+  assert.equal(shim.__portals.length, 1, '浮条必须 portal 一次')
+  assert.equal(shim.__portals[0], fakeBody, 'portal 目标必须是 document.body')
+  // element 是 <OwnToast/>（createPortal 替身原样返回），再往里一层才是 <div style=…>
+  const card = element.type(element.props)
+  assert.equal(card.props.style.zIndex, 2147483647, 'z-index 要拉到 int32 上限')
+  assert.equal(card.props.style.position, 'fixed')
+})
+
+test('拿不到 react-dom 时退回槽内渲染：功能不丢（只是可能被弹窗压住）', () => {
+  const { rendered } = renderToast('done') // 缺省 require 会抛错 → 没有 reactDom
+  assert.ok(rendered && rendered.props && rendered.props.style, '没有 react-dom 也要正常渲染')
+  assert.equal(rendered.props.style.zIndex, 2147483647)
+})
+
+test('设置页「弹一条看大小」按钮是两行三字（不被挤成难看的断行）', () => {
+  const { page } = renderPage()
+  const buttons = collect(page, (node) => node.type === 'button'
+    && node.props.children && node.props.children[0]
+    && node.props.children[0].props && node.props.children[0].props.children === '弹一条')
+  assert.equal(buttons.length, 1, '应当只有一个「弹一条 / 看大小」按钮')
+  const lines = buttons[0].props.children.map((span) => span.props.children)
+  assert.deepEqual(lines, ['弹一条', '看大小'], '两行，各三个字')
+  for (const span of buttons[0].props.children) {
+    assert.equal(span.props.style.display, 'block', '两行要各自成行')
+  }
+  assert.equal(buttons[0].props.style.whiteSpace, 'nowrap', '不许被挤断行')
+})

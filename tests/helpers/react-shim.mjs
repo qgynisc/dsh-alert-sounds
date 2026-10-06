@@ -5,9 +5,13 @@
  *   - 直接拿到注册进 slot 的组件返回的元素；
  *   - 从 `element.props` 里取出 getCurrent / subscribe / close 这些回调，
  *     于是**不用真的渲染**就能验证浮条与设置页的接线。
+ *
+ * createPortal（react-dom 的替身）只记录容器并原样返回节点：单测关心「有没有 portal
+ * 到 body」，不关心真实挂载。
  */
 export function createReactShim() {
   const stateHooks = []
+  const portals = []
   return {
     createElement(type, props, ...children) {
       const merged = Object.assign({}, props ?? {})
@@ -25,6 +29,11 @@ export function createReactShim() {
       // 单测里不跑副作用（订阅由测试自己调用 subscribe）
       if (typeof effect === 'function') effect()
     },
+    createPortal(node, container) {
+      portals.push(container)
+      return node
+    },
     __stateHooks: stateHooks,
+    __portals: portals,
   }
 }

@@ -22,12 +22,17 @@ const inject = ["timer"];
 /** 版本号由 scripts/build.mjs 从 package.json 注入（设置页底部显示）。 */
 const VERSION = /*__VERSION__*/ '0.0.0'
 /**
- * 平台外部模块：React（DSH 模块加载器提供；build 只放行这一个 require）。
+ * 平台外部模块（DSH 模块加载器提供；build 只放行 react / react-dom）。
  * **刻意不用 const 直接 require**：设置页与浮条是可选装饰，万一某个 DSH 版本不提供
  * react，也必须让声音与检测照常工作，而不是整个客户端模块加载失败。
+ * react-dom 用来把浮条 createPortal 到 <body>：`shell.overlay` 的容器是
+ * `.overlayLayer { z-index: 20 }`，它自己就是一个堆叠上下文，浮条在里面**永远压不过
+ * 设置弹窗**（2026-10-06 用户截图：预览正好被设置窗盖住）。portal 到 body 就自由了。
  */
 let react = null;
 try { react = require("react"); } catch (e) { react = null; }
+let reactDom = null;
+try { reactDom = require("react-dom"); } catch (e) { reactDom = null; }
 
 /* ===========================================================================
  * 1. 设置（localStorage）
@@ -159,7 +164,7 @@ const I18N = {
     "rate": "语音语速", "rate.slow": "慢", "rate.normal": "标准", "rate.fast": "快",
     "dnd": "勿扰时段", "dnd.on": "开启", "dnd.to": "至",
     "preview": "预览", "preview.title": "各类提醒长什么样（1× 示意）", "preview.hint": "这些是 1× 示意，用来看配色与文字排版；真实大小请点上面的「弹一条看看」或每类右边的「预览」——那会按当前大小弹一条真身。",
-    "preview.real": "真实效果", "preview.real.button": "弹一条看看", "preview.real.hint": "按当前「提示样式 / 提示大小」弹一条真的；点它或 15 秒后消失",
+    "preview.real": "真实效果", "preview.real.button1": "弹一条", "preview.real.button2": "看大小", "preview.real.hint": "按当前「提示样式 / 提示大小」弹一条真的；点它或 15 秒后消失",
     "sec.base": "基础", "sec.sound": "提醒声音", "sec.screen": "屏幕提示", "sec.reset": "其它",
     "upload": "上传", "sep": "：", "reset": "恢复默认设置", "reset.hint": "恢复全部选项为默认值（已上传的自定义音色保留）", "reset.confirm": "确定恢复全部选项为默认值？",
     "hint": "选“语音”会用朗读代替提示音（需浏览器支持语音合成）。", "stalled.detail": "长时间未进展",
@@ -182,7 +187,7 @@ const I18N = {
     "rate": "Voice rate", "rate.slow": "Slow", "rate.normal": "Normal", "rate.fast": "Fast",
     "dnd": "Do-not-disturb", "dnd.on": "On", "dnd.to": "to",
     "preview": "Preview", "preview.title": "What each alert looks like (1× sketch)", "preview.hint": "These are 1× sketches (colours and layout). For the real size use “Pop one” above, or “Preview” next to a kind — those pop the real banner at your current size.",
-    "preview.real": "Real preview", "preview.real.button": "Pop one", "preview.real.hint": "pops the real banner at your current style/size; click it or it goes after 15s",
+    "preview.real": "Real preview", "preview.real.button1": "Pop one", "preview.real.button2": "to check size", "preview.real.hint": "pops the real banner at your current style/size; click it or it goes after 15s",
     "sec.base": "Basics", "sec.sound": "Alert sounds", "sec.screen": "Screen banner", "sec.reset": "Other",
     "upload": "Upload", "sep": ": ", "reset": "Restore defaults", "reset.hint": "Reset all options to defaults (uploaded custom sounds are kept)", "reset.confirm": "Restore all options to defaults?",
     "hint": "Choosing “Voice” speaks instead of a tone (requires browser speech synthesis).", "stalled.detail": "No progress for a while",

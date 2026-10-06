@@ -66,13 +66,14 @@ const headTitleStyle = { fontSize: "15px", fontWeight: 600 };
 const headSubStyle = { color: "var(--dsw-alias-label-tertiary, rgba(128,128,128,0.85))", fontSize: "12px", lineHeight: "18px" };
 const headLinkStyle = { color: "var(--dsw-alias-label-link, #2b5cd9)", textDecoration: "none" };
 
-/** 浮条统一挂在屏幕底部中间（与上游同位置，换实现不换位置）。 */
+/** 浮条统一挂在屏幕底部中间（与上游同位置，换实现不换位置）。
+ *  z-index 用 int32 上限：横幅会被 portal 到 `<body>`，这个值才真的是「最前面」。 */
 const TOAST_BASE = {
   position: "fixed",
   left: "50%",
   bottom: "28px",
   transform: "translateX(-50%)",
-  zIndex: 2147483000,
+  zIndex: 2147483647,
   fontFamily: "system-ui, sans-serif",
 };
 
@@ -206,10 +207,16 @@ function SettingsPanel(props) {
       react.createElement("select", { value: String(toastScaleOf(s)), onChange: e => { commit(Object.assign({}, s, { toastScale: Number(e.target.value) })); props.previewToast("done"); }, style: selStyle },
         TOAST_SCALES.map(n => react.createElement("option", { key: n, value: String(n) }, n + "×"))),
       react.createElement("span", { style: mutedStyle }, t("toastScale.hint"))),
-    /* 真实预览：按当前大小弹一条真身（调完上面两项顺手点一下就看到了） */
+    /* 真实预览：按当前大小弹一条真身（调完上面两项顺手点一下就看到了）
+     * 文案分两行「弹一条 / 看大小」：一行四个字会被按钮宽度挤成 3+1 的难看断行。 */
     react.createElement("div", { style: rowStyle },
       react.createElement("span", { style: keyStyle }, t("preview.real")),
-      react.createElement("button", { style: btnStyle, onClick: () => props.previewToast("done") }, t("preview.real.button")),
+      react.createElement("button", {
+        style: Object.assign({}, btnStyle, { lineHeight: 1.5, textAlign: "center", whiteSpace: "nowrap" }),
+        onClick: () => props.previewToast("done"),
+      },
+        react.createElement("span", { style: { display: "block" } }, t("preview.real.button1")),
+        react.createElement("span", { style: { display: "block" } }, t("preview.real.button2"))),
       react.createElement("span", { style: mutedStyle }, t("preview.real.hint"))),
     /* ---- 各类提醒长什么样：静态预览（1× 示意，看配色与文字）----
      * 与真身**共用同一个 OwnToast**（inline 模式），所以排版配色不会漂移；
@@ -309,7 +316,7 @@ function OwnToast(props) {
     card.left = "50%";
     card.bottom = px(b.bottom);
     card.transform = "translateX(-50%)";
-    card.zIndex = 2147483000;
+    card.zIndex = 2147483647;
     // 放大后要防止在窄窗口里溢出屏幕：限宽
     card.maxWidth = "calc(100vw - " + (b.marginX * 2) + "px)";
     card.boxShadow = "0 " + px(4) + " " + px(14) + " rgba(0,0,0,.35)";
@@ -319,6 +326,23 @@ function OwnToast(props) {
   return react.createElement("div", { style: card, role: "status", "aria-live": "polite" },
     react.createElement("span", { style: title }, t(props.kind)),
     react.createElement("span", { style: sub }, formatClock(props.at) + " · " + t("own.hint")));
+}
+
+/**
+ * 把浮条挂到 `<body>` 上。
+ *
+ * 为什么必须 portal：`shell.overlay` 的容器是 `.overlayLayer { z-index: 20 }`——
+ * 它自己就是一个堆叠上下文，浮条写在里面的 z-index 再大也**压不过设置弹窗**
+ * （2026-10-06 用户截图：点「预览」后横幅正好被设置窗盖住）。
+ * portal 到 body 之后，2147483647 才是真的在最前面。
+ * 拿不到 react-dom 时退回槽内渲染：仍能用，只是可能被弹窗压住。
+ */
+function portalToBody(node) {
+  if (node && reactDom && typeof reactDom.createPortal === "function"
+    && typeof document !== "undefined" && document && document.body) {
+    try { return reactDom.createPortal(node, document.body); } catch (e) { /* 回落到槽内渲染 */ }
+  }
+  return node;
 }
 
 /* ===================== 浮条分发：按设置挑一种实现 ===================== */
@@ -333,8 +357,10 @@ function AlertToast(props) {
   // 用户会以为功能坏了（这正是 2026-10-06 反馈「无法看到真实效果」的一种可能）。
   const isPreview = typeof props.isPreview === "function" ? props.isPreview() : false;
   if (!settings.showToast && !isPreview) return null;
-  if (settings.toastStyle === "original") return react.createElement(OriginalToast, { kind: msg });
-  return react.createElement(OwnToast, { kind: msg, at: at });
+  const card = settings.toastStyle === "original"
+    ? react.createElement(OriginalToast, { kind: msg })
+    : react.createElement(OwnToast, { kind: msg, at: at });
+  return portalToBody(card);
 }
 
 /* 供单测读取浮条尺寸旋钮（panel.js 的 const 在 __test 之后才求值，所以这里补挂）。 */

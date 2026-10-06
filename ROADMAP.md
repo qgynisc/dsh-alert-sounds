@@ -27,7 +27,7 @@
 ## 明确不做
 
 - 不做任何网络请求、不上报、不加 analytics（与上游一致，且写进了 README 的隐私承诺）。
-- 不引入运行时依赖：浏览器半边只允许 `require('react')`，构建脚本会直接拒绝别的 `require`。
+- 不引入运行时依赖：浏览器半边只允许 `require('react')` 与 `require('react-dom')`（后者只用于把浮条 portal 到 `<body>`，见 CHANGELOG 1.0.0 的层级修复），构建脚本会直接拒绝别的 `require`。
 - 不改 DSH 核心行为、不注入宿主侧逻辑（宿主半边永远只是占位）。
 
 ## 跟上游的节奏

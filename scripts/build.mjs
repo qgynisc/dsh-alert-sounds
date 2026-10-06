@@ -52,9 +52,11 @@ clientSource = clientSource.replace(PANEL_ANCHOR, () => readSource('src/panel.js
 
 /* ---- require 白名单 ----
  * 浏览器半边原则上不做模块解析：`dsh.client.inject` 是空的，factory 的 require 只服务
- * 平台外部模块。React 正是 DSH 模块加载器提供的平台外部模块（官方设置页与
- * dsh-status-rotator / 上游 dsh-alert-sound 都这么拿），所以**只放行 require('react')**。 */
-const REQUIRE_ALLOWED = /^require\s*\(\s*(['"])react\1\s*\)$/
+ * 平台外部模块。react / react-dom 正是 DSH 模块加载器提供的基线外部模块（官方客户端包
+ * 里就是 `require("react")` / `require("react-dom")`，例如 dsh-client-ui-attachment 用
+ * react-dom 的 createPortal），所以**只放行这两个**，别的一律构建失败。
+ * （react-dom 只用来把浮条 portal 到 <body>，逃出 shell.overlay 的 z-index:20 堆叠上下文。） */
+const REQUIRE_ALLOWED = /^require\s*\(\s*(['"])(?:react|react-dom)\1\s*\)$/
 const requireCalls = [...clientSource.matchAll(/(^|[^.\w])(require\s*\([^)]*\))/gm)].map((m) => m[2].trim())
 const offending = requireCalls.filter((text) => !REQUIRE_ALLOWED.test(text))
 if (offending.length > 0) {
