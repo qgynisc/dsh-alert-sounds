@@ -123,7 +123,8 @@ node scripts/import-audio.mjs "<folder>"   # replace the built-in tones (needs f
 
 Upstream's `lib/client.js` cannot be `git merge`d here (this repo splits it into `src/`). See [docs/UPSTREAM.md](docs/UPSTREAM.md) for the full procedure; `npm run check:upstream` tells you what changed and where it belongs.
 
-> Known limitation (inherited from upstream): a session that was **already running when the page loaded** will not announce its completion (`seed()` only records a baseline, it doesn't arm the turn). A normal start→finish cycle always fires.
+> ~~Known limitation (inherited from upstream): a session that was **already running when the page loaded** will not announce its completion.~~
+> **Fixed on 2026-10-06**: `seed()` now also arms sessions that were already running, so the turn in flight when you reload **does** announce its completion. The Diagnostics group at the bottom of the settings page shows the watch state and the last alert.
 
 ## Credits
 
