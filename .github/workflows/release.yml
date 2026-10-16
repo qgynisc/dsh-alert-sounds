@@ -63,8 +63,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # v3 起运行时是 Node 24（v2 是 Node 20，GitHub 已弃用并在日志里打告警）；
+      # v3.0.0 唯一的破坏性变更就是运行时，输入项与 v2 兼容。
       - name: 创建 GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.3
         with:
           generate_release_notes: true
         env:
