@@ -6,6 +6,19 @@
 > `0.3.x` 及更早的历史属于上游 [Machine-126/dsh-alert-sound](https://github.com/Machine-126/dsh-alert-sound/blob/main/CHANGELOG.md)
 > （检测、音色、语音兜底、音频预热那批修复都是它做的，本仓库原样继承）。
 
+## [1.1.1] — 2026-10-17
+
+### 修复
+- **README 的 license 徽章显示 `invalid`**（2026-10-17 用户截图反馈）：徽章原来用
+  `img.shields.io/github/license/...`，这次 shields.io 端取 GitHub API 失败、把失败结果缓存了 4 小时
+  （`cache-control: max-age=14400`），于是渲成灰色的 `invalid`。**仓库的许可证本身一直是标准 MIT**：
+  GitHub REST `repos/.../license` 返回 `spdx_id=MIT`、GraphQL `licenseInfo=MIT`、仓库页签也显示「MIT license」
+  ——不是授权问题，也不是本仓库的文件问题（同一条徽章在上游仓库、同账号其它仓库也 invalid，
+  而 badgen 的同一数据源显示 MIT）。
+  徽章改用 **npm 源** `img.shields.io/npm/l/@qgynisc/dsh-alert-sounds`（数据来自 npm registry，
+  不经过 GitHub API，不会受 shields 的 GitHub 配额/缓存影响），中英 README 同步。
+  纯文档改动，**无代码 / 行为变化**。
+
 ## [1.1.0] — 2026-10-17
 
 ### 新增

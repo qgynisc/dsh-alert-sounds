@@ -1,6 +1,6 @@
 {
   "name": "@qgynisc/dsh-alert-sounds",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "DeepSeek Harness Web GUI 提醒音：审批 / 提问 / 完成 / 出错 / 卡住各有音色或语音，完成提示条可常驻到鼠标移动（fork 自 @machine-126/dsh-alert-sound）",
   "keywords": [
     "deepseek",

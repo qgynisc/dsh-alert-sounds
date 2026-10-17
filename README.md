@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@qgynisc/dsh-alert-sounds)](https://www.npmjs.com/package/@qgynisc/dsh-alert-sounds)
 [![test](https://github.com/qgynisc/dsh-alert-sounds/actions/workflows/test.yml/badge.svg)](https://github.com/qgynisc/dsh-alert-sounds/actions/workflows/test.yml)
-[![license](https://img.shields.io/github/license/qgynisc/dsh-alert-sounds)](https://github.com/qgynisc/dsh-alert-sounds/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@qgynisc/dsh-alert-sounds)](https://github.com/qgynisc/dsh-alert-sounds/blob/main/LICENSE)
 [![release](https://img.shields.io/github/v/release/qgynisc/dsh-alert-sounds)](https://github.com/qgynisc/dsh-alert-sounds/releases)
 
 **简体中文** | [English](README.en.md)
