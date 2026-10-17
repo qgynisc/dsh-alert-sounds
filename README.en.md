@@ -16,17 +16,18 @@ Notification sounds and on-screen banners for the **DeepSeek Harness (dsh) web G
 
 ## Screenshots
 
-![Settings → Alerts → On-screen banners: colours and layout of the five alert kinds (1×)](https://raw.githubusercontent.com/qgynisc/dsh-alert-sounds/main/docs/images/settings-toast.png)
+![Settings → Alerts → On-screen banners: colours and layout of the five alert kinds (1×; complete/error show the turn duration)](https://raw.githubusercontent.com/qgynisc/dsh-alert-sounds/main/docs/images/settings-toast.png)
 
-The **On-screen banners** group under Settings → **Alerts**: all five kinds (approval / answer / complete / error / stalled) at a glance. The bars shown are **1× schematic previews** rendered by the **same component as the real banner**, so they never drift from the real thing; each row's **Preview** button pops a real banner at your current size, and **Pop one / check size** does the same with your current style.
+The **On-screen banners** group under Settings → **Alerts**: all five kinds (approval / answer / complete / error / stalled) at a glance. The bars shown are **1× schematic previews** rendered by the **same component as the real banner**, so they never drift from the real thing; **the complete / error rows also show how long the turn took** (2m 13s in the preview). Each row's **Preview** button pops a real banner at your current size, and **Pop one / check size** does the same with your current style.
 
 ## What this fork changes (vs upstream 0.3.14)
 
 | | Upstream | This fork |
 |---|---|---|
-| **Banner dwell** | Fixed 3.6s auto-dismiss, and the toast was **off by default** (so you never saw it) | New **Toast style** setting, two **independent implementations**:<br>**① Built-in persistent card (default)** — stays until the pointer moves noticeably (≥8px) or you click; shows the completion time `HH:MM` and an `×`.<br>**② Original** — upstream's bottom-centre coloured bar with the 3.6s auto-dismiss. |
+| **Banner dwell** | Fixed 3.6s auto-dismiss, and the toast was **off by default** (so you never saw it) | New **Toast style** setting, two **independent implementations**:<br>**① Built-in persistent card (default)** — stays until the pointer moves noticeably (≥8px) or you click; shows the kind, the completion time `HH:MM` and how to dismiss (two lines, no dot, no ×).<br>**② Original** — upstream's bottom-centre coloured bar with the 3.6s auto-dismiss. |
+| **Turn duration** | — | The **complete / error** banner's first line now ends with **how long this turn took** (`用时 2分13秒`): measured from your prompt to the completion (**waiting for approvals/answers counts**), using the host-provided prompt timestamp so it **survives a page refresh**. Format: `43秒` under a minute, `1小时02分` over an hour. Only complete/error — approval/answer/stalled are not task completions; the macOS/browser system notification body stays **without** duration (as requested). |
 | Names / ids | `@machine-126/dsh-alert-sound`, slot id `dsh-alert`, keys `dsh-alert-sound.v1` | All renamed; the two plugins never share settings. |
-| Structure | One hand-written 821-line `lib/client.js` | `src/client.js` (engine) + `src/panel.js` (UI) + `scripts/build.mjs` → `lib/`; 89 unit tests + install self-check |
+| Structure | One hand-written 821-line `lib/client.js` | `src/client.js` (engine) + `src/panel.js` (UI) + `scripts/build.mjs` → `lib/`; 101 unit tests + install self-check |
 | Upstream tracking | — | `npm run check:upstream` diffs upstream against the `vendor/` snapshot and names, per hunk, which function it belongs to and which file here to edit |
 | React | top-level `require('react')` | failure-tolerant: without React the settings page is skipped, **sounds and detection keep working** |
 
@@ -106,7 +107,7 @@ All processing stays in the browser. The plugin makes **no network requests**, s
 │  ├─ import-audio.mjs     # imports external material as the built-in tones (match/trim/loudness → assets/audio/*.mp3)
 │  └─ render-audio.mjs     # fallback: synthesise a tone set when you have no material (refuses to overwrite by default)
 ├─ assets/audio/           # the four built-in tones as mp3 — committed, inlined into lib/client.js by the build
-├─ tests/                  # 89 unit tests, run against the built lib/ artifacts
+├─ tests/                  # 101 unit tests, run against the built lib/ artifacts
 ├─ vendor/upstream/        # byte-exact upstream snapshot (for diffing when tracking upstream)
 └─ lib/                    # build output, committed on purpose (git installs do not build)
 ```

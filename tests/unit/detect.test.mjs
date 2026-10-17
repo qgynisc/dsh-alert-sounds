@@ -187,3 +187,40 @@ test('启动不再弹蓝色「提醒已连接」条（用户会误以为是提�
   await delay(900)
   assert.equal(overlayProps().getCurrent(), null)
 })
+
+/* ---------------- 本轮用时（2026-10-17） ---------------- */
+
+test('完成提示带本轮用时：取会话列表投影里的 lastPromptAt（刷新页面也不丢）', async () => {
+  // 模拟「这一轮已经跑了约 125 秒」：宿主投影 lastPromptAt = 提问时刻。
+  const promptAt = Date.now() - 125000
+  const withStamp = (running) => ({
+    byId: { s1: { running, projectionValues: { sessionListMetadata: { blank: false, lastPromptAt: promptAt } } } },
+    current: 's1',
+  })
+  const { list, overlayProps } = setup({ list: withStamp(false) })
+  list.set(withStamp(true)) // 这一轮开始：armRun 记下 promptAt
+  list.set(withStamp(false)) // 这一轮结束：settleRun 里算用时
+  await delay(400)
+  assert.equal(overlayProps().getCurrent(), 'done')
+  const durationMs = overlayProps().getCurrentDuration()
+  assert.ok(typeof durationMs === 'number', '完成提示必须带用时')
+  assert.ok(durationMs >= 125000 && durationMs < 131000, `用时应对应约 125 秒，实际 ${durationMs}`)
+})
+
+test('拿不到 lastPromptAt 时退回插件自己的计时（不显示错的用时，也不崩）', async () => {
+  const { list, overlayProps } = setup({ list: { byId: { s1: { running: false } }, current: 's1' } })
+  list.set({ byId: { s1: { running: true } }, current: 's1' })
+  await delay(120)
+  list.set({ byId: { s1: { running: false } }, current: 's1' })
+  await delay(400)
+  const durationMs = overlayProps().getCurrentDuration()
+  assert.ok(typeof durationMs === 'number' && durationMs > 0 && durationMs < 5000, `本地兜底应是一个很短的用时，实际 ${durationMs}`)
+})
+
+test('审批 / 提问这类提醒不带用时（只有任务完成/出错才有）', async () => {
+  const { pending, overlayProps } = setup()
+  pending.set(new Map([['s1', { kind: 'approval', toolName: 'write', reason: '写入文件' }]]))
+  await delay(60)
+  assert.equal(overlayProps().getCurrent(), 'approval')
+  assert.equal(overlayProps().getCurrentDuration(), null, '审批不是任务完成，不该显示用时')
+})

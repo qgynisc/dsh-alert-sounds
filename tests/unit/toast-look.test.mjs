@@ -31,10 +31,13 @@ function makeMod(settings) {
 function renderToast(kind, options = {}) {
   const { registered, mod } = makeMod(options.settings ?? { lang: 'zh' })
   const overlay = registered['shell.overlay'][0].component()
-  const element = overlay.type(Object.assign({}, overlay.props, {
+  const overrides = {
     getCurrent: () => kind,
     getCurrentAt: () => Date.parse('2026-10-06T14:32:00'),
-  }))
+  }
+  // 需要时注入「本轮用时」（缺省 = 没有用时，结构和以前一致）
+  if ('durationMs' in options) overrides.getCurrentDuration = () => options.durationMs
+  const element = overlay.type(Object.assign({}, overlay.props, overrides))
   if (element === null || element === undefined) return { element: null, mod }
   // element 是 <OwnToast/> 或 <OriginalToast/>，再往里一层才是真正的 <div style=…>
   return { element, which: element.type.name, rendered: element.type(element.props), mod }
@@ -56,6 +59,7 @@ function renderPage(options = {}) {
     mod,
     // 浮条状态从 overlay 槽读：设置页的「预览」按钮点下去必须真的走同一个 store
     getCurrent: () => registered['shell.overlay'][0].component().props.getCurrent(),
+    getCurrentDuration: () => registered['shell.overlay'][0].component().props.getCurrentDuration(),
   }
 }
 
@@ -198,7 +202,10 @@ test('设置页：五类提醒都有静态预览，且与真身共用同一套�
     assert.equal(style.width, '100%')
     assert.equal(style.background, mod.__test.TOAST_MAP[element.props.kind].bg, `${element.props.kind} 预览要用同一底色`)
     assert.equal(style.fontSize, undefined, '字号在子节点上，卡片本身不设')
-    assert.equal(card.props.children[0].props.style.fontSize, '14px', '预览固定按 1 倍渲染')
+    // 完成/出错有「用时」，标题行是个 flex 行；其余类别标题还是单个 span
+    const titleNode = card.props.children[0]
+    const titleSpan = titleNode.type === 'div' ? titleNode.props.children[0] : titleNode
+    assert.equal(titleSpan.props.style.fontSize, '14px', '预览固定按 1 倍渲染')
     assert.equal(collect(card, (node) => node.type === 'button').length, 0, '预览里同样不该有 ×')
   }
 })
@@ -211,6 +218,63 @@ test('设置页：每类的「预览」按钮真的会弹一条该类的浮条�
   assert.equal(getCurrent(), 'approval', '点第一类（审批）的预览就该弹 approval')
   buttons[2].props.onClick()
   assert.equal(getCurrent(), 'done', '点第三类（完成）的预览就该弹 done')
+})
+
+test('自研浮条：完成提示带「本轮用时」——跟在标题后、小一号、不加粗，仍然是两行', () => {
+  const { rendered, mod } = renderToast('done', { settings: { lang: 'zh' }, durationMs: 133000 })
+  const base = mod.__test.OWN_TOAST_BASE
+  const [titleRow, subNode] = rendered.props.children
+
+  assert.equal(rendered.props.children.length, 2, '加用时不能变成三行')
+  assert.equal(titleRow.type, 'div', '有时用时，标题行是个居中的 flex 行')
+  assert.equal(titleRow.props.style.display, 'flex')
+  assert.equal(titleRow.props.style.alignItems, 'baseline', '小字与大标题按基线对齐')
+  assert.equal(titleRow.props.style.whiteSpace, 'nowrap')
+
+  const [titleSpan, durationSpan] = titleRow.props.children
+  assert.equal(titleSpan.props.children, '输出完成')
+  assert.equal(durationSpan.props.children, '用时 2分13秒')
+  assert.equal(titleSpan.props.style.fontSize, px(base.title * 5), '标题还是 5× 字号')
+  assert.equal(durationSpan.props.style.fontSize, px(base.duration * 5), '用时小一号（10×5=50px）')
+  assert.equal(durationSpan.props.style.fontWeight, 400, '用时不加粗，不抢标题')
+  assert.ok(parseFloat(durationSpan.props.style.fontSize) < parseFloat(titleSpan.props.style.fontSize))
+  assert.ok(!texts(subNode).join('').includes('用时'), '用时在第一行，不该跑到第二行')
+  assert.ok(texts(subNode).join('').includes('鼠标移动或点击收起'))
+})
+
+test('自研浮条：没有用时的类别（审批/提问/卡住）结构不变——仍是两个 span，第一行不拆行', () => {
+  for (const kind of ['approval', 'question', 'stalled']) {
+    const { rendered } = renderToast(kind, { settings: { lang: 'zh' } })
+    assert.equal(rendered.props.children.length, 2)
+    assert.equal(rendered.props.children[0].type, 'span', `${kind} 没有用时，标题不该包成 flex 行`)
+    assert.ok(!texts(rendered).join('').includes('用时'))
+  }
+})
+
+test('设置页 1× 示意：完成/出错带示例用时，其它三类不带（与真身一致）', () => {
+  const { page, mod } = renderPage()
+  const inlineElements = collect(page, (node) => node.props && node.props.inline === true)
+  const byKind = Object.fromEntries(inlineElements.map((element) => [element.props.kind, element.props]))
+  assert.equal(byKind.done.durationMs, mod.__test.SAMPLE_DURATION_MS)
+  assert.equal(byKind.failed.durationMs, mod.__test.SAMPLE_DURATION_MS)
+  for (const kind of ['approval', 'question', 'stalled']) {
+    assert.ok(!byKind[kind].durationMs, `${kind} 的示意不该有用时`)
+  }
+  // 完成那条的静态预览确实把示例用时渲染出来了
+  const doneCard = inlineElements.find((element) => element.props.kind === 'done').type(byKind.done)
+  assert.ok(texts(doneCard).join('').includes('用时 2分13秒'))
+})
+
+test('设置页「预览」：点完成会带示例用时，点审批不带（预览与真身一致）', () => {
+  const { page, getCurrent, getCurrentDuration, mod } = renderPage({ settings: { lang: 'zh' } })
+  const buttons = collect(page, (node) => node.type === 'button' && node.props.children === '预览')
+  assert.equal(buttons.length, mod.__test.KINDS.length)
+  buttons[2].props.onClick() // KINDS 顺序：approval, question, done, failed, stalled
+  assert.equal(getCurrent(), 'done')
+  assert.equal(getCurrentDuration(), mod.__test.SAMPLE_DURATION_MS, '完成预览要展示示例用时')
+  buttons[0].props.onClick()
+  assert.equal(getCurrent(), 'approval')
+  assert.equal(getCurrentDuration(), null, '审批的预览不该带用时')
 })
 
 test('原方案（上游彩条）没有被动过：仍是 14px 白字彩底、无按钮、无放大', () => {

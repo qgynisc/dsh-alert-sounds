@@ -224,10 +224,14 @@ function SettingsPanel(props) {
      * **真实大小**请点上面的「弹一条看看」或每类右边的「预览」。 */
     react.createElement("div", { style: previewTitleStyle }, t("preview.title")),
     react.createElement("div", { style: previewListStyle },
-      KINDS.map(kind => react.createElement("div", { key: kind, style: previewRowStyle },
-        react.createElement("span", { style: previewLabelStyle }, t(kind)),
-        react.createElement("div", { style: previewCellStyle },
-          react.createElement(OwnToast, { kind: kind, at: Date.now(), inline: true }))))),
+      KINDS.map(kind => {
+        // 完成/出错的示意带一个示例用时（2分13秒）——和真身一样出现在标题后面，好让你看清排版。
+        const sample = previewDurationOf(kind);
+        return react.createElement("div", { key: kind, style: previewRowStyle },
+          react.createElement("span", { style: previewLabelStyle }, t(kind)),
+          react.createElement("div", { style: previewCellStyle },
+            react.createElement(OwnToast, { kind: kind, at: Date.now(), inline: true, durationMs: sample ? sample.durationMs : null })));
+      })),
     react.createElement("div", { style: hintStyle }, t("preview.hint")),
 
     /* ===================== 恢复默认 ===================== */
@@ -317,6 +321,8 @@ const OWN_TOAST_SCALE = 5; // = DEFAULTS.toastScale，也是设置缺失时的�
 const OWN_TOAST_BASE = {
   paddingX: 16, paddingY: 12,
   title: 14, sub: 11,
+  /* 「用时」跟在标题后面：小一号、不加粗（2026-10-17 用户要求完成提示显示本轮耗时） */
+  duration: 10, durationGap: 6,
   bottom: 28, radius: 12,
 };
 /** 设置里「提示大小」可选的倍数。 */
@@ -374,8 +380,26 @@ function OwnToast(props) {
   }
   const title = { display: "block", fontWeight: 600, fontSize: px(b.title), lineHeight: 1.2, whiteSpace: noWrap };
   const sub = { display: "block", fontSize: px(b.sub), lineHeight: 1.2, opacity: 0.85, whiteSpace: noWrap };
+  /* 「本轮用时」只给完成/出错，且只在**确实知道**用时的时候显示（拿不到就不显示，不瞎猜）。
+   * 排版上跟在标题后面、小一号、不加粗——这样 5× 时整条还是不会比现在宽多少（宽度安全）。 */
+  const durationMs = typeof props.durationMs === "number" && isFinite(props.durationMs) && props.durationMs > 0 ? props.durationMs : null;
+  const titleLine = durationMs === null
+    ? react.createElement("span", { style: title }, t(props.kind))
+    : react.createElement("div", {
+        style: {
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "center",
+          gap: px(b.durationGap),
+          whiteSpace: noWrap,
+        },
+      },
+        react.createElement("span", { style: title }, t(props.kind)),
+        react.createElement("span", {
+          style: { display: "block", fontWeight: 400, fontSize: px(b.duration), lineHeight: 1.2, opacity: 0.9, whiteSpace: noWrap },
+        }, formatDuration(durationMs)));
   return react.createElement("div", { style: card, role: "status", "aria-live": "polite" },
-    react.createElement("span", { style: title }, t(props.kind)),
+    titleLine,
     react.createElement("span", { style: sub }, formatClock(props.at) + " · " + t("own.hint")));
 }
 
@@ -402,7 +426,15 @@ function AlertToast(props) {
   const msg = pair[0], setMsg = pair[1];
   const atPair = react.useState(props.getCurrentAt());
   const at = atPair[0], setAt = atPair[1];
-  react.useEffect(() => props.subscribe(() => { setMsg(props.getCurrent()); setAt(props.getCurrentAt()); }), []);
+  // 本轮用时（只有完成/出错有；其它类别为 null）。拿不到 getCurrentDuration 时按无用时渲染。
+  const readDuration = () => (typeof props.getCurrentDuration === "function" ? props.getCurrentDuration() : null);
+  const durPair = react.useState(readDuration());
+  const durationMs = durPair[0], setDuration = durPair[1];
+  react.useEffect(() => props.subscribe(() => {
+    setMsg(props.getCurrent());
+    setAt(props.getCurrentAt());
+    setDuration(readDuration());
+  }), []);
   if (!msg) return null;
   // 「预览」是你主动点的，所以即使「悬浮提示」总开关关着也要显示——否则点了预览什么都没发生，
   // 用户会以为功能坏了（这正是 2026-10-06 反馈「无法看到真实效果」的一种可能）。
@@ -410,7 +442,7 @@ function AlertToast(props) {
   if (!settings.showToast && !isPreview) return null;
   const card = settings.toastStyle === "original"
     ? react.createElement(OriginalToast, { kind: msg })
-    : react.createElement(OwnToast, { kind: msg, at: at });
+    : react.createElement(OwnToast, { kind: msg, at: at, durationMs: durationMs });
   return portalToBody(card);
 }
 

@@ -259,3 +259,52 @@ test('非预览的提醒仍按老规矩（鼠标移动即关），isPreview 标�
   env.fire('pointermove', { clientX: 40, clientY: 0 })
   assert.equal(store.getCurrent(), null)
 })
+
+/* ---------------- 本轮用时（2026-10-17 用户要求：完成提示显示本次任务花费时间） ---------------- */
+
+test('浮条 store：durationMs 跟着 emit 走；换一条 / close 会清掉（不会把上一条的用时留在屏幕上）', () => {
+  const { store } = makeStore('untilMove')
+  assert.equal(store.getCurrentDuration(), null, '还没提醒时没有用时')
+  store.emit('done', { durationMs: 133000 })
+  assert.equal(store.getCurrent(), 'done')
+  assert.equal(store.getCurrentDuration(), 133000)
+  store.emit('approval')
+  assert.equal(store.getCurrentDuration(), null, '没有用时的类别要清掉上一条的')
+  store.emit('failed', { durationMs: 5000 })
+  assert.equal(store.getCurrentDuration(), 5000)
+  store.close()
+  assert.equal(store.getCurrentDuration(), null, 'close 之后不该还留着用时')
+})
+
+test('浮条 store：非法 durationMs（0 / 负数 / NaN / 字符串）按「没有用时」处理', () => {
+  const { store } = makeStore('untilMove')
+  for (const bad of [0, -1, NaN, Infinity, '133000', null, undefined]) {
+    store.emit('done', { durationMs: bad })
+    assert.equal(store.getCurrentDuration(), null, `非法值 ${String(bad)} 不该被当成用时`)
+  }
+})
+
+test('formatDuration（英文）：43s / 2m 13s / 1h 02m', () => {
+  // 默认 bundle 没有 localStorage / navigator → 语言回落 en（见 pickLang 测试）
+  const { formatDuration } = __test
+  assert.equal(formatDuration(43000), 'took 43s')
+  assert.equal(formatDuration(133000), 'took 2m 13s')
+  assert.equal(formatDuration(60000), 'took 1m', '整分不写 0 秒')
+  assert.equal(formatDuration(3720000), 'took 1h 02m')
+  assert.equal(formatDuration(3600000), 'took 1h', '整小时不写 0 分')
+  assert.equal(formatDuration(500), 'took 1s', '不足 1 秒按 1 秒算，不显示 0')
+  assert.equal(formatDuration(0), 'took 1s')
+  assert.equal(formatDuration(NaN), 'took 1s', '非法值不抛错')
+})
+
+test('formatDuration（中文）：43秒 / 2分13秒 / 1小时02分', () => {
+  const { mod } = loadBundle({
+    localStorage: { getItem: (key) => (key === 'dsh-alert-sounds.v1' ? JSON.stringify({ lang: 'zh' }) : null), setItem: () => {} },
+  })
+  const { formatDuration } = mod.__test
+  assert.equal(formatDuration(43000), '用时 43秒')
+  assert.equal(formatDuration(133000), '用时 2分13秒')
+  assert.equal(formatDuration(60000), '用时 1分')
+  assert.equal(formatDuration(3720000), '用时 1小时02分')
+  assert.equal(formatDuration(3600000), '用时 1小时')
+})

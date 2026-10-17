@@ -56,3 +56,13 @@ test('上一版的 toastMode 文案已经清干净（避免设置页出现死键
     assert.deepEqual(stale, [], `${lang} 还留着：${stale.join(', ')}`)
   }
 })
+
+test('「本轮用时」的文案中英都齐（完成提示第一行会用到）', () => {
+  for (const lang of ['zh', 'en']) {
+    for (const key of ['duration', 'unit.hour', 'unit.min', 'unit.sec']) {
+      assert.ok(I18N[lang][key], `${lang} 缺 ${key}`)
+    }
+  }
+  assert.equal(I18N.zh.duration, '用时')
+  assert.equal(I18N.en.duration, 'took')
+})
